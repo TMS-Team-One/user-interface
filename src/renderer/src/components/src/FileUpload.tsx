@@ -84,8 +84,6 @@ export function FileUpload({
   return (
     <div className="w-full space-y-4">
       <div className="grid w-full items-center gap-1.5">
-        <Label htmlFor="file-upload">Upload File</Label>
-
         {file ? (
           <>
             <Attachment state="done" size="default" orientation="horizontal" className="w-full">

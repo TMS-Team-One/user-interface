@@ -1,10 +1,11 @@
-import { Plus, PlusIcon } from 'lucide-react'
+import { Plus, PlusIcon, RefreshCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { DialogFooter } from '@/components/ui/dialog'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -61,7 +62,11 @@ function AddTestCaseModalContent({
   )
 }
 
-function AppSidebar(): React.JSX.Element {
+function AppSidebar({
+  onSelectTestCase
+}: {
+  onSelectTestCase: (test: TestSummary) => void
+}): React.JSX.Element {
   const { openModal } = useModal()
   const [testCaseHistory, setTestCaseHistory] = useState<TestSummary[]>([])
 
@@ -76,9 +81,11 @@ function AppSidebar(): React.JSX.Element {
     setTestCaseHistory((prev) => [test, ...prev])
   }
 
+  const [connectionEstablished, setConnectionEstablished] = useState<boolean>(true)
+
   return (
     <Sidebar>
-      <SidebarHeader>
+      <SidebarHeader className="flex mt-2 mx-2">
         <h1 className="text-black text-2xl font-semibold">ProbePilot</h1>
         <Button
           className="w-full justify-start"
@@ -93,7 +100,9 @@ function AppSidebar(): React.JSX.Element {
           Add new test case
         </Button>
       </SidebarHeader>
-      <Separator />
+      <div className="p-2">
+        <Separator />
+      </div>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
@@ -105,7 +114,9 @@ function AppSidebar(): React.JSX.Element {
               <SidebarMenu>
                 {testCaseHistory.map((testCase) => (
                   <SidebarMenuItem key={testCase.id}>
-                    <SidebarMenuButton>{testCase.testName}</SidebarMenuButton>
+                    <SidebarMenuButton onClick={() => onSelectTestCase(testCase)}>
+                      {testCase.testName}
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -113,6 +124,27 @@ function AppSidebar(): React.JSX.Element {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <div className="p-1">
+        <Separator />
+      </div>
+      <SidebarFooter className="mx-3 mb-1 flex flex-row items-center justify-between">
+        <div>
+          {connectionEstablished ? (
+            <div className="gap-3 flex flex-row items-center justify-center w-fit">
+              <div className="rounded-4xl bg-lime-600 size-2"> </div>
+              <a className="text-lime-600 text-sm">Connection established</a>
+            </div>
+          ) : (
+            <div className="gap-3 flex flex-row items-center justify-center w-fit">
+              <div className="rounded-4xl bg-red-600 size-2"> </div>
+              <a className="text-red-600 text-sm">No connection</a>
+            </div>
+          )}
+        </div>
+        <Button className="w-fit" variant={'ghost'} size={'icon'}>
+          <RefreshCcw></RefreshCcw>
+        </Button>
+      </SidebarFooter>
     </Sidebar>
   )
 }
