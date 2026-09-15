@@ -14,25 +14,47 @@ import {
 } from '@/components/ui/sidebar'
 import { useModal } from '@/hooks/use-modal'
 import { FileUpload } from './FileUpload'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { TestSummary } from '@shared/types'
 
-interface TestCase {
-  id: string
-  name: string
-}
+function AddTestCaseModalContent({
+  onCreated
+}: {
+  onCreated: (test: TestSummary) => void
+}): React.JSX.Element {
+  const { closeModal } = useModal()
+  const [file, setFile] = useState<File | null>(null)
+  const [testName, setTestName] = useState<string>('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
-const testCaseHistory: TestCase[] = []
+  const handleSubmit = async () => {
+    if (!file || !testName.trim()) return
 
-function AddTestCaseModalContent(): React.JSX.Element {
-  const [fileUploaded, setFileUploaded] = useState<boolean>(false)
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const gerberFileContent = await file.text()
+      const test = await window.api.tests.create(testName.trim(), file.name, gerberFileContent)
+      onCreated(test)
+      closeModal()
+    } catch (error) {
+      console.error('Failed to create test case', error)
+      const message = error instanceof Error ? error.message : String(error)
+      setSubmitError(`Failed to add test case: ${message}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <>
-      <FileUpload onFileChange={(file) => setFileUploaded(!!file)} />
+      <FileUpload onFileChange={setFile} onTestNameChange={setTestName} />
+      {submitError && <p className="text-xs text-destructive">{submitError}</p>}
       <DialogFooter>
-        <Button disabled={!fileUploaded}>
+        <Button disabled={!file || !testName.trim() || submitting} onClick={handleSubmit}>
           <Plus />
-          Add test case
+          {submitting ? 'Adding...' : 'Add test case'}
         </Button>
       </DialogFooter>
     </>
@@ -41,6 +63,18 @@ function AddTestCaseModalContent(): React.JSX.Element {
 
 function AppSidebar(): React.JSX.Element {
   const { openModal } = useModal()
+  const [testCaseHistory, setTestCaseHistory] = useState<TestSummary[]>([])
+
+  useEffect(() => {
+    /** window.api.tests
+      .list()
+      .then(setTestCaseHistory)
+      .catch((error) => console.error('Failed to load test cases', error)) **/
+  }, [])
+
+  const handleTestCaseCreated = (test: TestSummary) => {
+    setTestCaseHistory((prev) => [test, ...prev])
+  }
 
   return (
     <Sidebar>
@@ -51,7 +85,7 @@ function AppSidebar(): React.JSX.Element {
           onClick={() =>
             openModal({
               title: 'Add new test case',
-              content: <AddTestCaseModalContent />
+              content: <AddTestCaseModalContent onCreated={handleTestCaseCreated} />
             })
           }
         >
@@ -63,7 +97,7 @@ function AppSidebar(): React.JSX.Element {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            {testCaseHistory.length === 0 ? (
+            {testCaseHistory.length === 0 || !testCaseHistory ? (
               <p className="px-2 py-1.5 text-sm text-sidebar-foreground/70">
                 No test cases done yet.
               </p>
@@ -71,7 +105,7 @@ function AppSidebar(): React.JSX.Element {
               <SidebarMenu>
                 {testCaseHistory.map((testCase) => (
                   <SidebarMenuItem key={testCase.id}>
-                    <SidebarMenuButton>{testCase.name}</SidebarMenuButton>
+                    <SidebarMenuButton>{testCase.testName}</SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

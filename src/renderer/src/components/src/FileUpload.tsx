@@ -23,14 +23,22 @@ function formatFileSize(bytes: number) {
 
 const isGerberFile = (file: File) => file.name.toLowerCase().endsWith('.gbr')
 
+function stripExtension(fileName: string): string {
+  const lastDot = fileName.lastIndexOf('.')
+  return lastDot > 0 ? fileName.slice(0, lastDot) : fileName
+}
+
 export function FileUpload({
-  onFileChange
+  onFileChange,
+  onTestNameChange
 }: {
   onFileChange?: (file: File | null) => void
+  onTestNameChange?: (testName: string) => void
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [testName, setTestName] = useState('')
 
   const acceptFile = (candidate: File) => {
     if (!isGerberFile(candidate)) {
@@ -40,6 +48,14 @@ export function FileUpload({
     setError(null)
     setFile(candidate)
     onFileChange?.(candidate)
+    const defaultTestName = stripExtension(candidate.name)
+    setTestName(defaultTestName)
+    onTestNameChange?.(defaultTestName)
+  }
+
+  const handleTestNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTestName(e.target.value)
+    onTestNameChange?.(e.target.value)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,28 +77,41 @@ export function FileUpload({
     setFile(null)
     setError(null)
     onFileChange?.(null)
+    setTestName('')
+    onTestNameChange?.('')
   }
 
   return (
-    <div className="w-full max-w-md space-y-4">
-      <div className="grid w-full max-w-md items-center gap-1.5">
+    <div className="w-full space-y-4">
+      <div className="grid w-full items-center gap-1.5">
         <Label htmlFor="file-upload">Upload File</Label>
 
         {file ? (
-          <Attachment state="done" size="default" orientation="horizontal" className="w-full">
-            <AttachmentMedia variant="icon">
-              <FileText />
-            </AttachmentMedia>
-            <AttachmentContent>
-              <AttachmentTitle>{file.name}</AttachmentTitle>
-              <AttachmentDescription>{formatFileSize(file.size)}</AttachmentDescription>
-            </AttachmentContent>
-            <AttachmentActions>
-              <AttachmentAction onClick={removeFile} aria-label="Remove file">
-                <X />
-              </AttachmentAction>
-            </AttachmentActions>
-          </Attachment>
+          <>
+            <Attachment state="done" size="default" orientation="horizontal" className="w-full">
+              <AttachmentMedia variant="icon">
+                <FileText />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{file.name}</AttachmentTitle>
+                <AttachmentDescription>{formatFileSize(file.size)}</AttachmentDescription>
+              </AttachmentContent>
+              <AttachmentActions>
+                <AttachmentAction onClick={removeFile} aria-label="Remove file">
+                  <X />
+                </AttachmentAction>
+              </AttachmentActions>
+            </Attachment>
+            <div className="grid w-full items-center gap-1.5">
+              <Label htmlFor="test-name">Test name</Label>
+              <Input
+                id="test-name"
+                value={testName}
+                onChange={handleTestNameChange}
+                placeholder="Test name"
+              />
+            </div>
+          </>
         ) : (
           <>
             <Attachment

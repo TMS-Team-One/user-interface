@@ -1,32 +1,31 @@
 @import 'tw-animate-css';
-
 @import 'tailwindcss';
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #fcfcfc;
-  --foreground: #171717;
-  --card: #fcfcfc;
-  --card-foreground: #171717;
-  --popover: #fcfcfc;
-  --popover-foreground: #525252;
+  --background: #fcf7ff;
+  --foreground: #000000;
+  --card: #fcf7ff;
+  --card-foreground: #000000;
+  --popover: #fcf7ff;
+  --popover-foreground: #000000;
   --primary: #387eff;
-  --primary-foreground: #fdfdfd;
-  --secondary: #fdfdfd;
-  --secondary-foreground: #171717;
-  --muted: #ededed;
-  --muted-foreground: #202020;
-  --accent: #ededed;
-  --accent-foreground: #202020;
+  --primary-foreground: #fcf7ff;
+  --secondary: #fcf7ff;
+  --secondary-foreground: #000000;
+  --muted: #fcf7ff;
+  --muted-foreground: #000000;
+  --accent: #fcf7ff;
+  --accent-foreground: #000000;
   --destructive: #fb2c36;
   --destructive-foreground: #fffcfc;
   --border: #dfdfdf;
-  --input: #f6f6f6;
+  --input: #fcf7ff;
   --ring: #387eff;
   --chart-1: #387eff;
-  --chart-2: #00c950;
-  --chart-3: #8e51ff;
+  --chart-2: #0fffff;
+  --chart-3: #7ccf00;
   --chart-4: #fb2c36;
   --chart-5: #fe9a00;
   --sidebar: #fcfcfc;
