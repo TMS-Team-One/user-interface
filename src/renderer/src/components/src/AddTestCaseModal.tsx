@@ -17,7 +17,7 @@ function AddTestCaseModal({
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (): Promise<void> => {
     if (!file || !testName.trim()) return
 
     setSubmitting(true)

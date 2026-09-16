@@ -15,13 +15,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { UploadCloud, FileText, X } from 'lucide-react'
 
-function formatFileSize(bytes: number) {
+function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const isGerberFile = (file: File) => file.name.toLowerCase().endsWith('.gbr')
+const isGerberFile = (file: File): boolean => file.name.toLowerCase().endsWith('.gbr')
 
 function stripExtension(fileName: string): string {
   const lastDot = fileName.lastIndexOf('.')
@@ -34,13 +34,13 @@ export function FileUpload({
 }: {
   onFileChange?: (file: File | null) => void
   onTestNameChange?: (testName: string) => void
-}) {
+}): React.JSX.Element {
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testName, setTestName] = useState('')
 
-  const acceptFile = (candidate: File) => {
+  const acceptFile = (candidate: File): void => {
     if (!isGerberFile(candidate)) {
       setError('Only .gbr files are supported')
       return
@@ -53,19 +53,19 @@ export function FileUpload({
     onTestNameChange?.(defaultTestName)
   }
 
-  const handleTestNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTestNameChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     setTestName(e.target.value)
     onTestNameChange?.(e.target.value)
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     if (e.target.files && e.target.files[0]) {
       acceptFile(e.target.files[0])
     }
     e.target.value = ''
   }
 
-  const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLLabelElement>): void => {
     e.preventDefault()
     setIsDragging(false)
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -73,7 +73,7 @@ export function FileUpload({
     }
   }
 
-  const removeFile = () => {
+  const removeFile = (): void => {
     setFile(null)
     setError(null)
     onFileChange?.(null)
