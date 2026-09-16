@@ -25,6 +25,7 @@ import {
   SidebarMenuItem
 } from '@/components/ui/sidebar'
 import { useModal } from '@/hooks/use-modal'
+import { useConnection } from '@/hooks/use-connection'
 import AddTestCaseModal from './AddTestCaseModal'
 import { useEffect, useState } from 'react'
 import type { TestSummary } from '@shared/types'
@@ -60,24 +61,26 @@ function AppSidebar({
     }
   }
 
-  const [connectionEstablished, setConnectionEstablished] = useState<boolean>(false)
+  const { connectionEstablished } = useConnection()
 
   return (
     <Sidebar>
       <SidebarHeader className="flex mt-2 mx-2">
-        <h1 className="text-black text-2xl font-semibold">ProbePilot</h1>
-        <Button
-          className="w-full justify-start"
-          onClick={() =>
-            openModal({
-              title: 'Add new test case',
-              content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
-            })
-          }
-        >
-          <PlusIcon />
-          Add new test case
-        </Button>
+        <h1 className="text-black text-2xl font-semibold font-sans">Probe Pilot</h1>
+        <div className="w-full flex justify-center">
+          <Button
+            className="w-fit justify-start"
+            onClick={() =>
+              openModal({
+                title: 'Add new test case',
+                content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
+              })
+            }
+          >
+            <PlusIcon />
+            Add new test case
+          </Button>
+        </div>
       </SidebarHeader>
       <div className="p-2">
         <Separator />
