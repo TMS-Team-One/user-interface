@@ -1,5 +1,6 @@
-import { PlusIcon, RefreshCcw, Trash2Icon } from 'lucide-react'
+import { PlusIcon, RefreshCcw, Trash2Icon, XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
 import {
   AlertDialog,
@@ -25,6 +26,7 @@ import {
   SidebarMenuItem
 } from '@/components/ui/sidebar'
 import { useModal } from '@/hooks/use-modal'
+import { useConnection } from '@/hooks/use-connection'
 import AddTestCaseModal from './AddTestCaseModal'
 import { useEffect, useState } from 'react'
 import type { TestSummary } from '@shared/types'
@@ -38,6 +40,8 @@ function AppSidebar({
 }): React.JSX.Element {
   const { openModal } = useModal()
   const [testCaseHistory, setTestCaseHistory] = useState<TestSummary[]>([])
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     window.api.tests
@@ -60,24 +64,72 @@ function AppSidebar({
     }
   }
 
-  const [connectionEstablished, setConnectionEstablished] = useState<boolean>(false)
+  const toggleSelectMode = () => {
+    setSelectMode((prev) => !prev)
+    setSelectedIds(new Set())
+  }
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const handleDeleteSelected = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    try {
+      await window.api.tests.deleteMany(ids)
+      setTestCaseHistory((prev) => prev.filter((testCase) => !selectedIds.has(testCase.id)))
+      ids.forEach((id) => onTestCaseDeleted?.(id))
+      setSelectedIds(new Set())
+      setSelectMode(false)
+    } catch (error) {
+      console.error('Failed to delete selected test cases', error)
+    }
+  }
+
+  const { connectionEstablished } = useConnection()
 
   return (
     <Sidebar>
       <SidebarHeader className="flex mt-2 mx-2">
-        <h1 className="text-black text-2xl font-semibold">ProbePilot</h1>
-        <Button
-          className="w-full justify-start"
-          onClick={() =>
-            openModal({
-              title: 'Add new test case',
-              content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
-            })
-          }
-        >
-          <PlusIcon />
-          Add new test case
-        </Button>
+        <h1 className="text-black text-2xl font-semibold font-sans">Probe Pilot</h1>
+        <div className="w-full flex justify-center">
+          <Button
+            className="w-fit justify-start"
+            onClick={() =>
+              openModal({
+                title: 'Add new test case',
+                content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
+              })
+            }
+          >
+            <PlusIcon />
+            Add new test case
+          </Button>
+        </div>
+        {testCaseHistory.length > 0 && (
+          <div className="w-full flex justify-center">
+            <Button className="w-fit justify-start" variant="ghost" onClick={toggleSelectMode}>
+              {selectMode ? (
+                <>
+                  <XIcon />
+                  Cancel
+                </>
+              ) : (
+                'Select'
+              )}
+            </Button>
+          </div>
+        )}
       </SidebarHeader>
       <div className="p-2">
         <Separator />
@@ -92,36 +144,52 @@ function AppSidebar({
             ) : (
               <SidebarMenu>
                 {testCaseHistory.map((testCase) => (
-                  <SidebarMenuItem key={testCase.id}>
-                    <SidebarMenuButton onClick={() => onSelectTestCase(testCase)}>
+                  <SidebarMenuItem key={testCase.id} className="flex items-center gap-1">
+                    {selectMode && (
+                      <Checkbox
+                        className="ml-2"
+                        checked={selectedIds.has(testCase.id)}
+                        onCheckedChange={() => toggleSelected(testCase.id)}
+                        aria-label={`Select ${testCase.testName}`}
+                      />
+                    )}
+                    <SidebarMenuButton
+                      onClick={() =>
+                        selectMode
+                          ? toggleSelected(testCase.id)
+                          : onSelectTestCase(testCase)
+                      }
+                    >
                       {testCase.testName}
                     </SidebarMenuButton>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <SidebarMenuAction
-                          showOnHover
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Delete ${testCase.testName}`}
-                        >
-                          <Trash2Icon />
-                        </SidebarMenuAction>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete test case?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently delete &quot;{testCase.testName}&quot; and its
-                            associated data. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeleteTestCase(testCase.id)}>
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    {!selectMode && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <SidebarMenuAction
+                            showOnHover
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Delete ${testCase.testName}`}
+                          >
+                            <Trash2Icon />
+                          </SidebarMenuAction>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete test case?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete &quot;{testCase.testName}&quot; and its
+                              associated data. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteTestCase(testCase.id)}>
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -129,6 +197,34 @@ function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      {selectMode && (
+        <div className="mx-3 mb-2 flex items-center justify-between">
+          <span className="text-sm text-sidebar-foreground/70">
+            {selectedIds.size} selected
+          </span>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={selectedIds.size === 0}>
+                <Trash2Icon />
+                Delete selected
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {selectedIds.size} test case(s)?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete the selected test cases and their associated data.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
       <div className="p-1">
         <Separator />
       </div>

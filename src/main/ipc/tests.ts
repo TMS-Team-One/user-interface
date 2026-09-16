@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { createTest, deleteTest, getTestById, listTests } from '../db/tests.repository'
+import { createTest, deleteTest, deleteTests, getTestById, listTests } from '../db/tests.repository'
 
 export function registerTestsIpc(): void {
   ipcMain.handle(
@@ -15,6 +15,8 @@ export function registerTestsIpc(): void {
   )
 
   ipcMain.handle('tests:delete', (_event, id: number) => deleteTest(id))
+
+  ipcMain.handle('tests:deleteMany', (_event, ids: number[]) => deleteTests(ids))
 
   ipcMain.handle('tests:getById', (_event, id: number) => getTestById(id))
 

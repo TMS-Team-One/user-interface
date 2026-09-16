@@ -16,7 +16,7 @@ function App(): React.JSX.Element {
         }
       />
       <SidebarInset>
-        <div className="flex gap-2 p-2 flex-col flex-1">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
           {selected !== undefined ? <TestCase testCase={selected} /> : <Welcome />}
         </div>
       </SidebarInset>

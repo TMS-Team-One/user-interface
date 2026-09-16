@@ -1,3 +1,5 @@
+@import 'https://fonts.googleapis.com/css2?family=Monoton&display=swap';
+
 @import 'tw-animate-css';
 @import 'tailwindcss';
 
@@ -15,7 +17,7 @@
   --secondary: #fcf7ff;
   --secondary-foreground: #000000;
   --muted: #e4e3e3;
-  --muted-foreground: #000000;
+  --muted-foreground: #646464;
   --accent: #fcf7ff;
   --accent-foreground: #000000;
   --destructive: #fb2c36;

@@ -65,6 +65,28 @@ GROUND_NET_RE = re.compile(
     re.IGNORECASE,
 )
 
+MM_PER_INCH = 25.4
+
+# Altium writes the true flashed size of each D-code as a non-standard
+# `G04:AMPARAMS|DCode=<n>|XSize=..mm|YSize=..mm|...*` comment. This is the
+# only place that size is available for pads whose aperture is defined via an
+# aperture macro (rounded rectangles, octagons, etc.) -- PyGerber exposes
+# `x_size`/`y_size` on simple circle/rect/obround apertures, but a macro
+# aperture is a generic parametrized primitive list with no such attributes.
+AMPARAMS_RE = re.compile(
+    r"^G04:AMPARAMS\|DCode=(\d+)\|XSize=([\d.]+)mm\|YSize=([\d.]+)mm\|",
+    re.MULTILINE,
+)
+
+
+def _parse_amparams_sizes(content: str) -> dict:
+    """Maps D-code -> (x_size, y_size) in inches, scraped from Altium's
+    `G04:AMPARAMS` comments (see AMPARAMS_RE)."""
+    sizes = {}
+    for dcode, x_mm, y_mm in AMPARAMS_RE.findall(content):
+        sizes[int(dcode)] = (float(x_mm) / MM_PER_INCH, float(y_mm) / MM_PER_INCH)
+    return sizes
+
 
 @dataclass
 class Pad:
@@ -77,6 +99,8 @@ class Pad:
     aperture_params: Optional[str]
     aperture_function: Optional[str]
     net_name: Optional[str]
+    x_size: Optional[float]
+    y_size: Optional[float]
 
     def as_tuple(self) -> Tuple[float, float]:
         return (self.x, self.y)
@@ -110,6 +134,35 @@ class GroundExtractionResult:
     locations: List[GroundLocation] = field(default_factory=list)
     has_net_attributes: bool = False
     warning: Optional[str] = None
+
+
+@dataclass
+class BoardBounds:
+    """Bounding box of every drawn primitive in a Gerber file (not just
+    pads) -- traces, regions, and flashes alike. Lets a renderer place pad
+    markers on top of a separately-rendered board image, since it's the same
+    extent that image's own coordinate frame is built from."""
+
+    min_x: float
+    min_y: float
+    max_x: float
+    max_y: float
+    x_size: float
+    y_size: float
+    unit: str
+
+
+@dataclass
+class GerberParseResult:
+    pads: List[Pad] = field(default_factory=list)
+    bounds: Optional[BoardBounds] = None
+
+
+# Altium's Gerber export can omit %TF.FileFunction% (the X2 job-file linkage
+# setting wasn't enabled) while still writing perfectly valid RS-274X copper
+# geometry. Rather than silently dropping such a file, fall back to Altium's
+# own copper-layer file extensions when the attribute is absent.
+COPPER_EXTENSIONS = (".gtl", ".gbl")
 
 
 def _find_gbr_file(directory: str, filename: str) -> Tuple[str, str]:
@@ -154,32 +207,72 @@ def _dcode_number(identifier: Optional[str]) -> Optional[int]:
     return int(digits) if digits.isdigit() else None
 
 
-def _aperture_params(aperture) -> Optional[str]:
+def _aperture_size(aperture, macro_size: Optional[Tuple[float, float]]) -> Tuple[Optional[float], Optional[float]]:
+    """The pad's flashed (x, y) size in inches. A round aperture's diameter
+    applies to both axes; a rect/obround aperture carries x_size/y_size
+    directly; an aperture-macro shape (rounded rectangle, octagon, ...) has
+    neither on the PyGerber object, so falls back to the size scraped from
+    Altium's %AMPARAMS% comment for that D-code, if any."""
+    if aperture is None:
+        return (None, None)
+    diameter = getattr(aperture, "diameter", None)
+    if diameter is not None:
+        size = float(diameter.as_inches())
+        return (size, size)
+    x_size = getattr(aperture, "x_size", None)
+    y_size = getattr(aperture, "y_size", None)
+    if x_size is not None and y_size is not None:
+        return (float(x_size.as_inches()), float(y_size.as_inches()))
+    if macro_size is not None:
+        return macro_size
+    return (None, None)
+
+
+def _aperture_params(aperture, size: Tuple[Optional[float], Optional[float]]) -> Optional[str]:
     if aperture is None:
         return None
     parts = []
-    diameter = getattr(aperture, "diameter", None)
-    x_size = getattr(aperture, "x_size", None)
-    y_size = getattr(aperture, "y_size", None)
-    hole = getattr(aperture, "hole_diameter", None)
-    if diameter is not None:
-        parts.append(f"diameter={diameter.as_inches():.6f}in")
+    x_size, y_size = size
     if x_size is not None and y_size is not None:
-        parts.append(f"{x_size.as_inches():.6f}x{y_size.as_inches():.6f}in")
+        if x_size == y_size:
+            parts.append(f"diameter={x_size:.6f}in")
+        else:
+            parts.append(f"{x_size:.6f}x{y_size:.6f}in")
+    hole = getattr(aperture, "hole_diameter", None)
     if hole is not None:
         parts.append(f"hole={hole.as_inches():.6f}in")
     return ", ".join(parts) if parts else None
 
 
-def _parse_gerber_source(content: str, source: str) -> List[Pad]:
+def _parse_gerber_source(content: str, source: str) -> GerberParseResult:
     ast = Tokenizer().tokenize(content)
     parser = Parser2()
     command_buffer = parser.parse(ast)
 
+    bbox = command_buffer.get_bounding_box()
+    min_x = float(bbox.min_x.as_inches())
+    min_y = float(bbox.min_y.as_inches())
+    max_x = float(bbox.max_x.as_inches())
+    max_y = float(bbox.max_y.as_inches())
+    bounds = BoardBounds(
+        min_x=min_x,
+        min_y=min_y,
+        max_x=max_x,
+        max_y=max_y,
+        x_size=max_x - min_x,
+        y_size=max_y - min_y,
+        unit="IN",
+    )
+
     file_function = parser.context.get_file_attribute(".FileFunction")
-    is_copper = bool(file_function) and file_function.split(",")[0].strip().lower() == "copper"
+    if file_function:
+        is_copper = file_function.split(",")[0].strip().lower() == "copper"
+    else:
+        is_copper = source.lower().endswith(COPPER_EXTENSIONS)
     if not is_copper:
-        return []
+        return GerberParseResult(pads=[], bounds=bounds)
+
+    amparams_sizes = _parse_amparams_sizes(content)
 
     pads: List[Pad] = []
     for command in command_buffer.commands:
@@ -198,20 +291,25 @@ def _parse_gerber_source(content: str, source: str) -> List[Pad]:
         if _is_ground_net(net_name):
             continue
 
+        dcode = _dcode_number(aperture.identifier if aperture is not None else None)
+        pad_x_size, pad_y_size = _aperture_size(aperture, amparams_sizes.get(dcode))
+
         pads.append(
             Pad(
                 x=float(command.flash_point.x.as_inches()),
                 y=float(command.flash_point.y.as_inches()),
                 unit="IN",
                 source=source,
-                dcode=_dcode_number(aperture.identifier if aperture is not None else None),
+                dcode=dcode,
                 aperture_shape=type(aperture).__name__ if aperture is not None else None,
-                aperture_params=_aperture_params(aperture),
+                aperture_params=_aperture_params(aperture, (pad_x_size, pad_y_size)),
                 aperture_function=function,
                 net_name=net_name,
+                x_size=pad_x_size,
+                y_size=pad_y_size,
             )
         )
-    return pads
+    return GerberParseResult(pads=pads, bounds=bounds)
 
 
 def _parse_ground_locations(content: str, source: str) -> GroundExtractionResult:
@@ -308,18 +406,22 @@ def find_ground_locations(
 def main(
     gbr_content: Optional[str] = None,
     test_filename: str = "example_board_top_copper_x3.gbr",
-) -> List[Pad]:
+    filename: Optional[str] = None,
+) -> GerberParseResult:
     """
-    Extracts every pad location from a single Gerber file (one .gbr file
-    describes one PCB).
+    Extracts every pad location (plus the file's overall bounding box, for
+    positioning those pads on top of a separately-rendered board image) from
+    a single Gerber file (one .gbr file describes one PCB).
 
     - gbr_content is None: reads `test_filename` from the local files/
       directory (recursively) for local testing.
     - gbr_content is a non-empty string: treated as the full text content of
-      one .gbr file (production mode).
+      one .gbr file (production mode). `filename` is the file's original
+      name, used as a fallback copper-layer signal when %TF.FileFunction% is
+      absent (see COPPER_EXTENSIONS).
     """
     if gbr_content:
-        source, content = "gerber", gbr_content
+        source, content = (filename or "gerber"), gbr_content
     else:
         source, content = _find_gbr_file(FILES_DIR, test_filename)
 
@@ -328,16 +430,18 @@ def main(
 
 if __name__ == "__main__":
     # Piped invocation (e.g. spawned from the Electron main process): the full
-    # .gbr file content is written to stdin, and the parsed pads are printed
-    # to stdout as JSON so the caller can JSON.parse() them.
+    # .gbr file content is written to stdin, the file's original name is
+    # argv[1], and the result ({pads, bounds}) is printed to stdout as JSON
+    # so the caller can JSON.parse() it.
     if not sys.stdin.isatty():
         import json
         from dataclasses import asdict
 
         gbr_content = sys.stdin.read()
-        pads = main(gbr_content)
-        print(json.dumps([asdict(pad) for pad in pads]))
+        filename = sys.argv[1] if len(sys.argv) > 1 else None
+        result = main(gbr_content, filename=filename)
+        print(json.dumps(asdict(result)))
     else:
         # Interactive/local testing: parse the local example file instead.
-        for pad in main():
+        for pad in main().pads:
             print(pad)
