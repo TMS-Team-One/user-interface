@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { Test, TestSummary } from '../shared/types'
+import type { ParsedPad, Test, TestSummary } from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -10,6 +10,12 @@ const api = {
     delete: (id: number): Promise<boolean> => ipcRenderer.invoke('tests:delete', id),
     getById: (id: number): Promise<Test | undefined> => ipcRenderer.invoke('tests:getById', id),
     list: (): Promise<TestSummary[]> => ipcRenderer.invoke('tests:list')
+  },
+  parsing: {
+    parseGerber: (testId: number): Promise<ParsedPad[]> =>
+      ipcRenderer.invoke('parsing:parseGerber', testId),
+    renderGerberSvg: (testId: number): Promise<string> =>
+      ipcRenderer.invoke('parsing:renderGerberSvg', testId)
   }
 }
 
