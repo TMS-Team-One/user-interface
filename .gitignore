@@ -6,6 +6,8 @@ out
 *.log*
 .venv
 .idea
+.env
+.env.*
 __pycache__/
 *.py[cod]
 .python-build/
