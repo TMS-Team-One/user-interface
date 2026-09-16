@@ -30,10 +30,13 @@ def create_chat_model(*, provider: str | None = None, model: str | None = None, 
     )
     if not selected_model:
         raise ValueError("A model name is required for non-OpenAI providers.")
+    if selected_provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY is missing. Add it to the project .env file before using Chat."
+        )
 
     return init_chat_model(
         model=selected_model,
         model_provider=selected_provider,
         **model_options,
     )
-

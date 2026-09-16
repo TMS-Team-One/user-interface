@@ -12,3 +12,4 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     step_count: NotRequired[int]
     guard_error: NotRequired[str | None]
+    test_context: NotRequired[str]

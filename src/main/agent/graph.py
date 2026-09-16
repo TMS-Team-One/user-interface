@@ -13,9 +13,19 @@ from ..tools.registry import ToolRegistry
 
 DEFAULT_SYSTEM_PROMPT = """You control an Ultimaker-based PCB probing robot and
 can measure voltage between its probe channels. Use only the provided tools.
-Request at most one tool per response, inspect its result and stop if a tool
-reports an error. Never generate raw G-code. The motion controller enforces the
-machine's coordinate and safe-height limits.
+
+IMPORTANT TOOL-SEQUENCING RULE: Issue at most one tool call in each model
+response. Never place two movements or any other two tool calls in the same
+response. If the task requires several actions or positions, call the first tool,
+wait for its result, then request the next tool in a new response. Continue this
+one-at-a-time sequence until the task is complete. Inspect every tool result and
+stop if it reports an error.
+
+Never generate raw G-code. The motion controller enforces the machine's
+coordinate and safe-height limits. The application automatically homes the
+printer before the first message in every new chat. Act autonomously without
+asking the user to approve tool calls. After lowering the probe, finish at a safe
+height; voltage measurements retract the probe automatically.
 """
 
 r"""
@@ -106,8 +116,12 @@ class _AgentNodes:
         self.max_tool_calls_per_step = max_tool_calls_per_step
 
     def agent_node(self, state: AgentState) -> dict:
+        context = state.get("test_context")
+        system_prompt = (
+            f"{self.system_prompt}\n\n{context}" if context else self.system_prompt
+        )
         response = self.model.invoke(
-            [SystemMessage(content=self.system_prompt), *state["messages"]]
+            [SystemMessage(content=system_prompt), *state["messages"]]
         )
         return {
             "messages": [response],
