@@ -1,5 +1,9 @@
 from src.main.motion_control.ultimaker import UltimakerMotion
 from src.main.hardware_bridge import HardwareBridge
+from src.main.voltage_measurement import (
+    VoltageMeasurementError,
+    VoltageMeterConnectionError,
+)
 
 
 class FakeSerial:
@@ -11,12 +15,45 @@ class FakeSerial:
 
 
 class FakeMotion:
+    SAFE_Z = 50.0
+
     def __init__(self, *, reachable: bool = True) -> None:
         self.printer = FakeSerial()
         self.reachable = reachable
+        self.position = (0.0, 0.0, self.SAFE_Z)
+        self.moves: list[tuple[float, float, float]] = []
+        self.home_calls = 0
 
     def is_reachable(self) -> bool:
         return self.reachable
+
+    def home(self) -> None:
+        self.home_calls += 1
+        self.position = (0.0, 0.0, 205.0)
+
+    def get_position(self) -> tuple[float, float, float]:
+        return self.position
+
+    def move_to(self, x: float, y: float, z: float) -> None:
+        self.moves.append((x, y, z))
+        self.position = (x, y, z)
+
+
+class FakeVoltageMeter:
+    def __init__(self, voltage: float = 3.3, error: Exception | None = None) -> None:
+        self.voltage = voltage
+        self.error = error
+        self.measure_calls: list[dict[str, object]] = []
+        self.closed = False
+
+    def measure_voltage(self, **kwargs: object) -> float:
+        self.measure_calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.voltage
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_get_position_accepts_standard_marlin_spacing() -> None:
@@ -53,10 +90,10 @@ def test_hardware_bridge_keeps_connection_open_until_disconnect() -> None:
     motion = FakeMotion()
     bridge = HardwareBridge(lambda: motion)
 
-    assert bridge.connect() == {"connected": True}
+    assert bridge.connect() == {"connected": True, "homed": False}
     assert motion.printer.is_open is True
-    assert bridge.status() == {"connected": True}
-    assert bridge.disconnect() == {"connected": False}
+    assert bridge.status() == {"connected": True, "homed": False}
+    assert bridge.disconnect() == {"connected": False, "homed": False}
     assert motion.printer.is_open is False
 
 
@@ -72,3 +109,139 @@ def test_hardware_bridge_closes_unreachable_connection() -> None:
         raise AssertionError("Unreachable Ultimaker was accepted")
 
     assert motion.printer.is_open is False
+
+
+def test_manual_test_requires_homing() -> None:
+    motion = FakeMotion()
+    bridge = HardwareBridge(lambda: motion, FakeVoltageMeter)
+    bridge.connect()
+
+    try:
+        bridge.run_manual_test({"x": 10.0, "y": 20.0, "z": 30.0})
+    except RuntimeError as error:
+        assert "Home the Ultimaker" in str(error)
+    else:
+        raise AssertionError("Manual movement was accepted before homing")
+
+
+def test_manual_test_moves_measures_and_retracts() -> None:
+    motion = FakeMotion()
+    voltage_meter = FakeVoltageMeter(voltage=3.287)
+    bridge = HardwareBridge(lambda: motion, lambda: voltage_meter)
+
+    bridge.connect()
+    home_result = bridge.home()
+    result = bridge.run_manual_test({"x": 10, "y": 20.0, "z": 15.5})
+
+    assert home_result["homed"] is True
+    assert motion.home_calls == 1
+    assert motion.moves == [(10.0, 20.0, 15.5), (10.0, 20.0, 50.0)]
+    assert len(voltage_meter.measure_calls) == 1
+    assert result == {
+        "target": {"x": 10.0, "y": 20.0, "z": 15.5},
+        "voltage": 3.287,
+        "unit": "V",
+        "retracted": True,
+    }
+
+    bridge.disconnect()
+    assert voltage_meter.closed is True
+
+
+def test_manual_test_retracts_and_discards_meter_when_connection_is_lost() -> None:
+    motion = FakeMotion()
+    voltage_meter = FakeVoltageMeter(
+        error=VoltageMeterConnectionError(
+            "Voltage meter connection was lost. Reconnect the Arduino and try again."
+        )
+    )
+    bridge = HardwareBridge(lambda: motion, lambda: voltage_meter)
+    bridge.connect()
+    bridge.home()
+
+    try:
+        bridge.run_manual_test({"x": 10, "y": 20, "z": 15})
+    except VoltageMeterConnectionError as error:
+        assert "connection was lost" in str(error)
+    else:
+        raise AssertionError("Failed voltage measurement was accepted")
+
+    assert motion.moves == [(10.0, 20.0, 15.0), (10.0, 20.0, 50.0)]
+    assert voltage_meter.closed is True
+
+
+def test_manual_test_reconnects_voltage_meter_after_failure() -> None:
+    motion = FakeMotion()
+    disconnected_meter = FakeVoltageMeter(
+        error=VoltageMeterConnectionError("Voltage meter connection was lost")
+    )
+    reconnected_meter = FakeVoltageMeter(voltage=2.5)
+    meters = iter((disconnected_meter, reconnected_meter))
+    bridge = HardwareBridge(lambda: motion, lambda: next(meters))
+    bridge.connect()
+    bridge.home()
+
+    try:
+        bridge.run_manual_test({"x": 10, "y": 20, "z": 15})
+    except VoltageMeterConnectionError:
+        pass
+    else:
+        raise AssertionError("Disconnected voltage meter was accepted")
+
+    result = bridge.run_manual_test({"x": 10, "y": 20, "z": 15})
+
+    assert disconnected_meter.closed is True
+    assert result["voltage"] == 2.5
+
+
+def test_manual_test_reports_missing_voltage_meter_without_moving() -> None:
+    motion = FakeMotion()
+
+    def missing_voltage_meter() -> FakeVoltageMeter:
+        raise VoltageMeterConnectionError(
+            "Voltage meter not found. Connect the Arduino/ADS1115 and try again."
+        )
+
+    bridge = HardwareBridge(lambda: motion, missing_voltage_meter)
+    bridge.connect()
+    bridge.home()
+
+    try:
+        bridge.run_manual_test({"x": 10, "y": 20, "z": 15})
+    except VoltageMeterConnectionError as error:
+        assert "Voltage meter not found" in str(error)
+    else:
+        raise AssertionError("Missing voltage meter was accepted")
+
+    assert motion.moves == []
+
+
+def test_manual_test_reports_unstable_voltage_separately() -> None:
+    motion = FakeMotion()
+    voltage_meter = FakeVoltageMeter(
+        error=TimeoutError("Voltage did not stabilize within 7 seconds")
+    )
+    bridge = HardwareBridge(lambda: motion, lambda: voltage_meter)
+    bridge.connect()
+    bridge.home()
+
+    try:
+        bridge.run_manual_test({"x": 10, "y": 20, "z": 15})
+    except VoltageMeasurementError as error:
+        assert "Check the probe contact" in str(error)
+    else:
+        raise AssertionError("Unstable voltage was accepted")
+
+
+def test_manual_test_rejects_non_finite_coordinates() -> None:
+    motion = FakeMotion()
+    bridge = HardwareBridge(lambda: motion, FakeVoltageMeter)
+    bridge.connect()
+    bridge.home()
+
+    try:
+        bridge.run_manual_test({"x": float("nan"), "y": 20, "z": 15})
+    except ValueError as error:
+        assert "X must be finite" in str(error)
+    else:
+        raise AssertionError("Non-finite coordinate was accepted")
