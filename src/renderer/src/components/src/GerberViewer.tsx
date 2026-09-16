@@ -12,7 +12,7 @@ const MAX_SCALE = 8
 const INITIAL_VIEW = { scale: 1, x: 0, y: 0 }
 const toPercentString = (scale: number): string => String(Math.round(scale * 100))
 
-const GerberViewer = ({ testCase }: { testCase: TestSummary }): React.JSX.Element => {
+const GerberViewerContent = ({ testCase }: { testCase: TestSummary }): React.JSX.Element => {
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState(INITIAL_VIEW)
@@ -22,14 +22,20 @@ const GerberViewer = ({ testCase }: { testCase: TestSummary }): React.JSX.Elemen
   const zoomInputFocused = useRef(false)
 
   useEffect(() => {
-    setSvg(null)
-    setError(null)
-    setView(INITIAL_VIEW)
-    setZoomInput(toPercentString(INITIAL_VIEW.scale))
+    let cancelled = false
+
     window.api.parsing
       .renderGerberSvg(testCase.id)
-      .then(setSvg)
-      .catch((err) => setError(String(err)))
+      .then((renderedSvg) => {
+        if (!cancelled) setSvg(renderedSvg)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(String(err))
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [testCase.id])
 
   useEffect(() => {
@@ -166,5 +172,9 @@ const GerberViewer = ({ testCase }: { testCase: TestSummary }): React.JSX.Elemen
     </Card>
   )
 }
+
+const GerberViewer = ({ testCase }: { testCase: TestSummary }): React.JSX.Element => (
+  <GerberViewerContent key={testCase.id} testCase={testCase} />
+)
 
 export default GerberViewer
