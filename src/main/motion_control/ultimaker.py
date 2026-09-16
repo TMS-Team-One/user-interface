@@ -1,8 +1,12 @@
 import re
 import time
 import serial
+import logging
 
-from src.serial_ports import SerialDevice, get_port
+from ..serial_ports import SerialDevice, get_port
+
+
+logger = logging.getLogger(__name__)
 
 
 # Establishes a serial.Serial connection and returns it
@@ -49,9 +53,9 @@ class UltimakerMotion:
     def __init__(self):
         self.printer = _create_connection()
         if self.is_reachable():
-            print("Ultimaker connected and reachable")
+            logger.info("Ultimaker connected and reachable")
         else:
-            print("Ultimaker connection failed")
+            logger.warning("Ultimaker connection failed")
 
 
     # private method to send g-codes to ultimaker
@@ -111,7 +115,10 @@ class UltimakerMotion:
         responses = self._send_gcode("M114")
 
         for response in responses:
-            match = re.search(r"X:(-?[\d.]+)Y:(-?[\d.]+)Z:(-?[\d.]+)", response)
+            match = re.search(
+                r"X:\s*(-?[\d.]+)\s+Y:\s*(-?[\d.]+)\s+Z:\s*(-?[\d.]+)",
+                response,
+            )
 
             if match:
                 x, y, z = map(float, match.groups())

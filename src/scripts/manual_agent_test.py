@@ -18,17 +18,17 @@ from dotenv import load_dotenv
 
 
 # Allow `python scripts/manual_agent_test.py` without installing the project.
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.agent.graph import build_agent_graph  # noqa: E402
-from src.agent.model import create_chat_model  # noqa: E402
-from src.motion_control.ultimaker import UltimakerMotion  # noqa: E402
-from src.tools.motion import create_motion_tools  # noqa: E402
-from src.tools.registry import ToolRegistry  # noqa: E402
-from src.tools.voltage import create_voltage_tools  # noqa: E402
-from src.voltage_measurement import ADS1115VoltageMeter  # noqa: E402
+from src.main.agent.graph import build_agent_graph  # noqa: E402
+from src.main.agent.model import create_chat_model  # noqa: E402
+from src.main.motion_control.ultimaker import UltimakerMotion  # noqa: E402
+from src.main.tools.motion import create_motion_tools  # noqa: E402
+from src.main.tools.registry import ToolRegistry  # noqa: E402
+from src.main.tools.voltage import create_voltage_tools  # noqa: E402
+from src.main.voltage_measurement import ADS1115VoltageMeter  # noqa: E402
 
 
 def main() -> None:

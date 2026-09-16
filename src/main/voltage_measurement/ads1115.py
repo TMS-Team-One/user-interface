@@ -12,7 +12,7 @@ from typing import Any
 
 import serial
 
-from src.serial_ports import SerialDevice, get_port
+from ..serial_ports import SerialDevice, get_port
 
 
 BAUD_RATE = 115_200

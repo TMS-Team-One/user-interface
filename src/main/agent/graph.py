@@ -7,8 +7,8 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
-from src.agent.state import AgentState
-from src.tools.registry import ToolRegistry
+from .state import AgentState
+from ..tools.registry import ToolRegistry
 
 
 DEFAULT_SYSTEM_PROMPT = """You control an Ultimaker-based PCB probing robot and
@@ -18,7 +18,7 @@ reports an error. Never generate raw G-code. The motion controller enforces the
 machine's coordinate and safe-height limits.
 """
 
-"""
+r"""
     START
       ↓
 |─→ agent

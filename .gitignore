@@ -6,3 +6,7 @@ out
 *.log*
 .venv
 .idea
+__pycache__/
+*.py[cod]
+.python-build/
+resources/python/*/
