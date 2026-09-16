@@ -27,6 +27,7 @@ import {
 import { useModal } from '@/hooks/use-modal'
 import { useConnection } from '@/hooks/use-connection'
 import AddTestCaseModal from './AddTestCaseModal'
+import ManualControlDialog from './ManualControlDialog'
 import { useEffect, useState } from 'react'
 import type { TestSummary } from '@shared/types'
 
@@ -61,7 +62,7 @@ function AppSidebar({
     }
   }
 
-  const { connectionEstablished, setConnectionEstablished } = useConnection()
+  const { connectionEstablished, setConnectionEstablished, setPrinterHomed } = useConnection()
   const [checkingConnection, setCheckingConnection] = useState(false)
   const [connectionError, setConnectionError] = useState<string>()
 
@@ -71,8 +72,10 @@ function AppSidebar({
     try {
       const status = await window.api.probe.connect()
       setConnectionEstablished(status.connected)
+      setPrinterHomed(status.homed)
     } catch (error) {
       setConnectionEstablished(false)
+      setPrinterHomed(false)
       setConnectionError(error instanceof Error ? error.message : String(error))
     } finally {
       setCheckingConnection(false)
@@ -173,17 +176,20 @@ function AppSidebar({
             </div>
           )}
         </div>
-        <Button
-          className="w-fit"
-          variant={'ghost'}
-          size={'icon'}
-          disabled={checkingConnection}
-          onClick={handleConnectionRefresh}
-          aria-label="Connect to Ultimaker"
-          title={connectionError || 'Connect to Ultimaker'}
-        >
-          <RefreshCcw className={checkingConnection ? 'animate-spin' : undefined}></RefreshCcw>
-        </Button>
+        <div className="flex items-center">
+          <ManualControlDialog />
+          <Button
+            className="w-fit"
+            variant={'ghost'}
+            size={'icon'}
+            disabled={checkingConnection}
+            onClick={handleConnectionRefresh}
+            aria-label="Connect to Ultimaker"
+            title={connectionError || 'Connect to Ultimaker'}
+          >
+            <RefreshCcw className={checkingConnection ? 'animate-spin' : undefined}></RefreshCcw>
+          </Button>
+        </div>
       </SidebarFooter>
     </Sidebar>
   )
