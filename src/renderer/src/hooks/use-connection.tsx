@@ -8,7 +8,7 @@ interface ConnectionContextValue {
 const ConnectionContext = React.createContext<ConnectionContextValue | null>(null)
 
 export function ConnectionProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [connectionEstablished, setConnectionEstablished] = React.useState<boolean>(true)
+  const [connectionEstablished, setConnectionEstablished] = React.useState<boolean>(false)
 
   const value = React.useMemo(
     () => ({ connectionEstablished, setConnectionEstablished }),

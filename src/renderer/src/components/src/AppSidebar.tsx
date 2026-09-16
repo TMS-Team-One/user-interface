@@ -47,11 +47,11 @@ function AppSidebar({
       .catch((error) => console.error('Failed to load test cases', error))
   }, [])
 
-  const handleTestCaseCreated = (test: TestSummary) => {
+  const handleTestCaseCreated = (test: TestSummary): void => {
     setTestCaseHistory((prev) => [test, ...prev])
   }
 
-  const handleDeleteTestCase = async (id: number) => {
+  const handleDeleteTestCase = async (id: number): Promise<void> => {
     try {
       await window.api.tests.delete(id)
       setTestCaseHistory((prev) => prev.filter((testCase) => testCase.id !== id))
@@ -61,7 +61,23 @@ function AppSidebar({
     }
   }
 
-  const { connectionEstablished } = useConnection()
+  const { connectionEstablished, setConnectionEstablished } = useConnection()
+  const [checkingConnection, setCheckingConnection] = useState(false)
+  const [connectionError, setConnectionError] = useState<string>()
+
+  const handleConnectionRefresh = async (): Promise<void> => {
+    setCheckingConnection(true)
+    setConnectionError(undefined)
+    try {
+      const status = await window.api.probe.connect()
+      setConnectionEstablished(status.connected)
+    } catch (error) {
+      setConnectionEstablished(false)
+      setConnectionError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setCheckingConnection(false)
+    }
+  }
 
   return (
     <Sidebar>
@@ -137,20 +153,36 @@ function AppSidebar({
       </div>
       <SidebarFooter className="mx-3 mb-1 flex flex-row items-center justify-between">
         <div>
-          {connectionEstablished ? (
+          {checkingConnection ? (
+            <div className="gap-3 flex flex-row items-center justify-center w-fit">
+              <div className="rounded-4xl bg-amber-500 size-2 animate-pulse"> </div>
+              <span className="text-amber-600 text-sm">Connecting…</span>
+            </div>
+          ) : connectionEstablished ? (
             <div className="gap-3 flex flex-row items-center justify-center w-fit">
               <div className="rounded-4xl bg-lime-600 size-2"> </div>
-              <a className="text-lime-600 text-sm">Connection established</a>
+              <span className="text-lime-600 text-sm">Connection established</span>
             </div>
           ) : (
-            <div className="gap-3 flex flex-row items-center justify-center w-fit">
+            <div
+              className="gap-3 flex flex-row items-center justify-center w-fit"
+              title={connectionError}
+            >
               <div className="rounded-4xl bg-red-600 size-2"> </div>
-              <a className="text-red-600 text-sm">No connection</a>
+              <span className="text-red-600 text-sm">No connection</span>
             </div>
           )}
         </div>
-        <Button className="w-fit" variant={'ghost'} size={'icon'}>
-          <RefreshCcw></RefreshCcw>
+        <Button
+          className="w-fit"
+          variant={'ghost'}
+          size={'icon'}
+          disabled={checkingConnection}
+          onClick={handleConnectionRefresh}
+          aria-label="Connect to Ultimaker"
+          title={connectionError || 'Connect to Ultimaker'}
+        >
+          <RefreshCcw className={checkingConnection ? 'animate-spin' : undefined}></RefreshCcw>
         </Button>
       </SidebarFooter>
     </Sidebar>
