@@ -31,11 +31,15 @@ const cachePath = join(buildRoot, 'cache')
 const executables = [
   {
     name: 'probe-pilot-parser',
-    entryPoint: join(projectRoot, 'src', 'main', 'parsing', 'parse-gbr-files.py')
+    entryPoint: join(projectRoot, 'src', 'main', 'parsing', 'parse-gbr-files.py'),
+    extraArgs: []
   },
   {
     name: 'probe-pilot-backend',
-    entryPoint: join(projectRoot, 'src', 'main', 'hardware_bridge.py')
+    entryPoint: join(projectRoot, 'src', 'main', 'hardware_bridge.py'),
+    // create_chat_model loads provider packages dynamically, so PyInstaller
+    // cannot discover the OpenAI integration through static imports alone.
+    extraArgs: ['--collect-all', 'langchain_openai']
   }
 ]
 
@@ -63,6 +67,7 @@ for (const executable of executables) {
       workPath,
       '--specpath',
       specPath,
+      ...executable.extraArgs,
       executable.entryPoint
     ],
     {
