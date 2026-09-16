@@ -1,6 +1,5 @@
 import AppSidebar from '@/components/src/AppSidebar'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import Layout from './components/src/Layout'
 import Welcome from './components/src/Welcome'
 import { useState } from 'react'
 import TestCase from './components/src/TestCase'
@@ -10,12 +9,15 @@ function App(): React.JSX.Element {
   const [selected, setSelected] = useState<TestSummary>()
   return (
     <SidebarProvider>
-      <AppSidebar onSelectTestCase={setSelected} />
+      <AppSidebar
+        onSelectTestCase={setSelected}
+        onTestCaseDeleted={(id) =>
+          setSelected((current) => (current?.id === id ? undefined : current))
+        }
+      />
       <SidebarInset>
         <div className="flex gap-2 p-2 flex-col flex-1">
-          <Layout title={!selected ? '' : `Test for "${selected.testName}"`}>
-            {selected !== undefined ? <TestCase testCase={selected} /> : <Welcome />}
-          </Layout>
+          {selected !== undefined ? <TestCase testCase={selected} /> : <Welcome />}
         </div>
       </SidebarInset>
     </SidebarProvider>

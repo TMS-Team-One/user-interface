@@ -1,7 +1,17 @@
-import { Plus, PlusIcon, RefreshCcw } from 'lucide-react'
+import { PlusIcon, RefreshCcw, Trash2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { DialogFooter } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from '@/components/ui/alert-dialog'
 import {
   Sidebar,
   SidebarContent,
@@ -10,78 +20,47 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem
 } from '@/components/ui/sidebar'
 import { useModal } from '@/hooks/use-modal'
-import { FileUpload } from './FileUpload'
+import AddTestCaseModal from './AddTestCaseModal'
 import { useEffect, useState } from 'react'
 import type { TestSummary } from '@shared/types'
 
-function AddTestCaseModalContent({
-  onCreated
-}: {
-  onCreated: (test: TestSummary) => void
-}): React.JSX.Element {
-  const { closeModal } = useModal()
-  const [file, setFile] = useState<File | null>(null)
-  const [testName, setTestName] = useState<string>('')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-
-  const handleSubmit = async () => {
-    if (!file || !testName.trim()) return
-
-    setSubmitting(true)
-    setSubmitError(null)
-    try {
-      const gerberFileContent = await file.text()
-      const test = await window.api.tests.create(testName.trim(), file.name, gerberFileContent)
-      onCreated(test)
-      closeModal()
-    } catch (error) {
-      console.error('Failed to create test case', error)
-      const message = error instanceof Error ? error.message : String(error)
-      setSubmitError(`Failed to add test case: ${message}`)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <>
-      <FileUpload onFileChange={setFile} onTestNameChange={setTestName} />
-      {submitError && <p className="text-xs text-destructive">{submitError}</p>}
-      <DialogFooter>
-        <Button disabled={!file || !testName.trim() || submitting} onClick={handleSubmit}>
-          <Plus />
-          {submitting ? 'Adding...' : 'Add test case'}
-        </Button>
-      </DialogFooter>
-    </>
-  )
-}
-
 function AppSidebar({
-  onSelectTestCase
+  onSelectTestCase,
+  onTestCaseDeleted
 }: {
   onSelectTestCase: (test: TestSummary) => void
+  onTestCaseDeleted?: (id: number) => void
 }): React.JSX.Element {
   const { openModal } = useModal()
   const [testCaseHistory, setTestCaseHistory] = useState<TestSummary[]>([])
 
   useEffect(() => {
-    /** window.api.tests
+    window.api.tests
       .list()
       .then(setTestCaseHistory)
-      .catch((error) => console.error('Failed to load test cases', error)) **/
+      .catch((error) => console.error('Failed to load test cases', error))
   }, [])
 
   const handleTestCaseCreated = (test: TestSummary) => {
     setTestCaseHistory((prev) => [test, ...prev])
   }
 
-  const [connectionEstablished, setConnectionEstablished] = useState<boolean>(true)
+  const handleDeleteTestCase = async (id: number) => {
+    try {
+      await window.api.tests.delete(id)
+      setTestCaseHistory((prev) => prev.filter((testCase) => testCase.id !== id))
+      onTestCaseDeleted?.(id)
+    } catch (error) {
+      console.error('Failed to delete test case', error)
+    }
+  }
+
+  const [connectionEstablished, setConnectionEstablished] = useState<boolean>(false)
 
   return (
     <Sidebar>
@@ -92,7 +71,7 @@ function AppSidebar({
           onClick={() =>
             openModal({
               title: 'Add new test case',
-              content: <AddTestCaseModalContent onCreated={handleTestCaseCreated} />
+              content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
             })
           }
         >
@@ -117,6 +96,32 @@ function AppSidebar({
                     <SidebarMenuButton onClick={() => onSelectTestCase(testCase)}>
                       {testCase.testName}
                     </SidebarMenuButton>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <SidebarMenuAction
+                          showOnHover
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Delete ${testCase.testName}`}
+                        >
+                          <Trash2Icon />
+                        </SidebarMenuAction>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete test case?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete &quot;{testCase.testName}&quot; and its
+                            associated data. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteTestCase(testCase.id)}>
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
