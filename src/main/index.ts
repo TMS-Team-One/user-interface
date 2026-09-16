@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerTestsIpc } from './ipc/tests'
 import { registerParsingIpc } from './ipc/parsing'
 import { registerProbeIpc } from './ipc/probe'
+import { registerChatIpc } from './ipc/chat'
 import { probeProcess } from './services/probe-process'
 
 // WSLg's virtualized GPU frequently fails to initialize for Electron/Chromium,
@@ -84,6 +85,7 @@ if (!app.requestSingleInstanceLock()) {
     registerTestsIpc()
     registerParsingIpc()
     registerProbeIpc()
+    registerChatIpc()
 
     // Dev needs 'unsafe-inline' for Vite's injected HMR/React-refresh script;
     // the production build has no inline scripts, so it stays fully locked down.

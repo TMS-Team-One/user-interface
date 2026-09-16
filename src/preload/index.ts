@@ -3,6 +3,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type {
   ManualProbeCoordinates,
   ManualProbeResult,
+  ChatEventEnvelope,
+  ChatResult,
+  ChatSendRequest,
   ParsedPad,
   ProbeConnectionStatus,
   Test,
@@ -31,6 +34,17 @@ const api = {
     home: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:home'),
     runManualTest: (coordinates: ManualProbeCoordinates): Promise<ManualProbeResult> =>
       ipcRenderer.invoke('probe:runManualTest', coordinates)
+  },
+  chat: {
+    history: (testId: number): Promise<ChatResult> => ipcRenderer.invoke('chat:history', testId),
+    send: (request: ChatSendRequest): Promise<ChatResult> =>
+      ipcRenderer.invoke('chat:send', request),
+    onEvent: (callback: (event: ChatEventEnvelope) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, envelope: ChatEventEnvelope): void =>
+        callback(envelope)
+      ipcRenderer.on('chat:event', listener)
+      return () => ipcRenderer.removeListener('chat:event', listener)
+    }
   }
 }
 

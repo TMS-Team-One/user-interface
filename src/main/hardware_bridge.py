@@ -7,8 +7,12 @@ import logging
 import math
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
+from dotenv import load_dotenv
+
+from src.main.agent.session import AgentChatSessions, EventEmitter
 from src.main.motion_control.ultimaker import UltimakerMotion
 from src.main.voltage_measurement.ads1115 import (
     ADS1115VoltageMeter,
@@ -60,6 +64,7 @@ class HardwareBridge:
         self._motion: MotionConnection | None = None
         self._voltage_meter: VoltageConnection | None = None
         self._homed = False
+        self._chat_sessions: AgentChatSessions | None = None
 
     def connect(self) -> dict[str, bool]:
         if self._motion is not None and self._is_open(self._motion):
@@ -137,9 +142,16 @@ class HardwareBridge:
             self._close_motion(self._motion)
             self._motion = None
         self._homed = False
+        if self._chat_sessions is not None:
+            self._chat_sessions.invalidate_homing()
         return self._connection_status(False)
 
-    def handle(self, method: str, params: object = None) -> dict[str, object]:
+    def handle(
+        self,
+        method: str,
+        params: object = None,
+        emit: EventEmitter | None = None,
+    ) -> dict[str, object]:
         if method == "connect":
             return self.connect()
         if method == "status":
@@ -148,9 +160,89 @@ class HardwareBridge:
             return self.home()
         if method == "run_manual_test":
             return self.run_manual_test(params)
+        if method == "chat_history":
+            test_id = self._chat_test_id(params)
+            return self._get_chat_sessions().history(test_id)
+        if method == "chat":
+            return self._chat(params, emit or (lambda _event: None))
         if method == "disconnect":
             return self.disconnect()
         raise ValueError(f"Unknown hardware method: {method}")
+
+    def _chat(self, params: object, emit: EventEmitter) -> dict[str, object]:
+        if not isinstance(params, dict):
+            raise ValueError("Chat parameters are required")
+        test_id = self._chat_test_id(params)
+        message = params.get("message")
+        test_name = params.get("test_name")
+        file_name = params.get("file_name")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("Chat message must not be empty")
+        if not isinstance(test_name, str) or not isinstance(file_name, str):
+            raise ValueError("Test case context is incomplete")
+        return self._get_chat_sessions().chat(
+            test_id=test_id,
+            message=message.strip(),
+            test_name=test_name,
+            file_name=file_name,
+            emit=emit,
+        )
+
+    @staticmethod
+    def _chat_test_id(params: object) -> int:
+        if not isinstance(params, dict):
+            raise ValueError("Chat parameters are required")
+        test_id = params.get("test_id")
+        if isinstance(test_id, bool) or not isinstance(test_id, int):
+            raise ValueError("Test case ID must be an integer")
+        return test_id
+
+    def _get_chat_sessions(self) -> AgentChatSessions:
+        if self._chat_sessions is None:
+            self._chat_sessions = AgentChatSessions(self._build_agent_graph, self.home)
+        return self._chat_sessions
+
+    def _build_agent_graph(self) -> object:
+        from src.main.agent.graph import build_agent_graph
+        from src.main.agent.model import create_chat_model
+        from src.main.tools.motion import create_motion_tools
+        from src.main.tools.registry import ToolRegistry
+        from src.main.tools.voltage import create_voltage_tools
+
+        registry = ToolRegistry()
+        registry.register_many(create_motion_tools(_AgentMotionController(self)))
+        registry.register_many(create_voltage_tools(_AgentVoltageMeter(self)))
+        return build_agent_graph(create_chat_model(), registry)
+
+    def _agent_measure_voltage(
+        self,
+        *,
+        duration: float,
+        max_wait: float,
+        scale: float,
+        absolute: bool,
+    ) -> float:
+        motion = self._require_motion()
+        if not self._homed:
+            raise RuntimeError("Home the Ultimaker before measuring voltage")
+        voltage_meter = self._get_voltage_meter()
+        try:
+            return voltage_meter.measure_voltage(
+                duration=duration,
+                max_wait=max_wait,
+                scale=scale,
+                absolute=absolute,
+            )
+        except Exception as measurement_error:
+            user_error = self._measurement_error(measurement_error)
+            self._discard_voltage_meter()
+            if user_error is measurement_error:
+                raise
+            raise user_error from measurement_error
+        finally:
+            x, y, z = motion.get_position()
+            if z < motion.SAFE_Z:
+                motion.move_to(x, y, motion.SAFE_Z)
 
     def _require_motion(self) -> MotionConnection:
         if self._motion is None or not self._is_open(self._motion):
@@ -246,6 +338,50 @@ class HardwareBridge:
             motion.printer.close()
 
 
+class _AgentMotionController:
+    """Expose bridge-owned motion to agent tools without opening another port."""
+
+    def __init__(self, bridge: HardwareBridge) -> None:
+        self._bridge = bridge
+
+    def is_reachable(self) -> bool:
+        return self._bridge.status()["connected"]
+
+    def home(self) -> None:
+        self._bridge.home()
+
+    def get_position(self) -> tuple[float, float, float]:
+        return self._bridge._require_motion().get_position()
+
+    def move_to(self, x: float, y: float, z: float) -> None:
+        motion = self._bridge._require_motion()
+        if not self._bridge._homed:
+            raise RuntimeError("Home the Ultimaker before moving it")
+        motion.move_to(x, y, z)
+
+
+class _AgentVoltageMeter:
+    """Measure through the bridge and retract automatically after every reading."""
+
+    def __init__(self, bridge: HardwareBridge) -> None:
+        self._bridge = bridge
+
+    def measure_voltage(
+        self,
+        *,
+        duration: float = 0.5,
+        max_wait: float = 7.0,
+        scale: float = 1.0,
+        absolute: bool = True,
+    ) -> float:
+        return self._bridge._agent_measure_voltage(
+            duration=duration,
+            max_wait=max_wait,
+            scale=scale,
+            absolute=absolute,
+        )
+
+
 def _response(request_id: object, *, result: object = None, error: Exception | None = None) -> str:
     if error is None:
         payload = {"id": request_id, "ok": True, "result": result}
@@ -259,7 +395,15 @@ def _response(request_id: object, *, result: object = None, error: Exception | N
     return json.dumps(payload, separators=(",", ":"))
 
 
+def _event(request_id: object, data: dict[str, object]) -> str:
+    return json.dumps(
+        {"event": "chat", "requestId": request_id, "data": data},
+        separators=(",", ":"),
+    )
+
+
 def main() -> None:
+    load_dotenv(Path.cwd() / ".env")
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     bridge = HardwareBridge()
 
@@ -277,10 +421,15 @@ def main() -> None:
                     raise ValueError("Request method must be a string")
                 output = _response(
                     request_id,
-                    result=bridge.handle(method, request.get("params")),
+                    result=bridge.handle(
+                        method,
+                        request.get("params"),
+                        emit=lambda data: print(_event(request_id, data), flush=True),
+                    ),
                 )
             except (
                 ConnectionError,
+                RuntimeError,
                 TimeoutError,
                 ValueError,
                 VoltageMeasurementError,

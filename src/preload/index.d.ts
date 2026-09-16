@@ -2,6 +2,9 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   ManualProbeCoordinates,
   ManualProbeResult,
+  ChatEventEnvelope,
+  ChatResult,
+  ChatSendRequest,
   ParsedPad,
   ProbeConnectionStatus,
   Test,
@@ -28,6 +31,12 @@ export interface ProbeApi {
   runManualTest: (coordinates: ManualProbeCoordinates) => Promise<ManualProbeResult>
 }
 
+export interface ChatApi {
+  history: (testId: number) => Promise<ChatResult>
+  send: (request: ChatSendRequest) => Promise<ChatResult>
+  onEvent: (callback: (event: ChatEventEnvelope) => void) => () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -35,6 +44,7 @@ declare global {
       tests: TestsApi
       parsing: ParsingApi
       probe: ProbeApi
+      chat: ChatApi
     }
   }
 }

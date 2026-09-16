@@ -14,6 +14,13 @@ interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
+  onEvent?: (event: unknown) => void
+}
+
+interface BridgeEvent {
+  event: string
+  requestId: number
+  data: unknown
 }
 
 class ProbeProcess {
@@ -24,7 +31,7 @@ class ProbeProcess {
   request<T>(
     method: string,
     params?: Record<string, unknown>,
-    options: { timeoutMs?: number } = {}
+    options: { timeoutMs?: number; onEvent?: (event: unknown) => void } = {}
   ): Promise<T> {
     const child = this.ensureStarted()
     const id = this.nextId++
@@ -38,7 +45,8 @@ class ProbeProcess {
       this.pending.set(id, {
         resolve: resolve as (value: unknown) => void,
         reject,
-        timeout
+        timeout,
+        onEvent: options.onEvent
       })
 
       child.stdin.write(`${JSON.stringify({ id, method, params })}\n`, (error) => {
@@ -83,11 +91,16 @@ class ProbeProcess {
   }
 
   private handleLine(line: string): void {
-    let response: BridgeResponse<unknown>
+    let response: BridgeResponse<unknown> | BridgeEvent
     try {
-      response = JSON.parse(line) as BridgeResponse<unknown>
+      response = JSON.parse(line) as BridgeResponse<unknown> | BridgeEvent
     } catch {
       console.error(`Hardware backend returned invalid JSON: ${line}`)
+      return
+    }
+
+    if ('event' in response) {
+      this.pending.get(response.requestId)?.onEvent?.(response.data)
       return
     }
 
