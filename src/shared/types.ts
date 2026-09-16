@@ -19,3 +19,7 @@ export interface ParsedPad {
   aperture_function: string | null
   net_name: string | null
 }
+
+export interface ProbeConnectionStatus {
+  connected: boolean
+}

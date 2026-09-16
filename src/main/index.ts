@@ -4,6 +4,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerTestsIpc } from './ipc/tests'
 import { registerParsingIpc } from './ipc/parsing'
+import { registerProbeIpc } from './ipc/probe'
+import { probeProcess } from './services/probe-process'
 
 // WSLg's virtualized GPU frequently fails to initialize for Electron/Chromium,
 // leaving the window rendered fully black or unresponsive. disableHardwareAcceleration()
@@ -81,6 +83,7 @@ if (!app.requestSingleInstanceLock()) {
 
     registerTestsIpc()
     registerParsingIpc()
+    registerProbeIpc()
 
     // Dev needs 'unsafe-inline' for Vite's injected HMR/React-refresh script;
     // the production build has no inline scripts, so it stays fully locked down.
@@ -113,6 +116,10 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') {
       app.quit()
     }
+  })
+
+  app.on('before-quit', () => {
+    probeProcess.stop()
   })
 }
 

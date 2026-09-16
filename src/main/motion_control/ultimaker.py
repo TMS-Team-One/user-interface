@@ -116,7 +116,7 @@ class UltimakerMotion:
 
         for response in responses:
             match = re.search(
-                r"X:\s*(-?[\d.]+)\s+Y:\s*(-?[\d.]+)\s+Z:\s*(-?[\d.]+)",
+                r"X:\s*(-?[\d.]+)\s*Y:\s*(-?[\d.]+)\s*Z:\s*(-?[\d.]+)",
                 response,
             )
 

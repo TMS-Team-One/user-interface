@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { ParsedPad, Test, TestSummary } from '../shared/types'
+import type { ParsedPad, ProbeConnectionStatus, Test, TestSummary } from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -16,6 +16,11 @@ const api = {
       ipcRenderer.invoke('parsing:parseGerber', testId),
     renderGerberSvg: (testId: number): Promise<string> =>
       ipcRenderer.invoke('parsing:renderGerberSvg', testId)
+  },
+  probe: {
+    connect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:connect'),
+    status: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:status'),
+    disconnect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:disconnect')
   }
 }
 

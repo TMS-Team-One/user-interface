@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { ParsedPad, Test, TestSummary } from '../shared/types'
+import type { ParsedPad, ProbeConnectionStatus, Test, TestSummary } from '../shared/types'
 
 export interface TestsApi {
   create: (testName: string, fileName: string, gerberFileContent: string) => Promise<Test>
@@ -13,12 +13,19 @@ export interface ParsingApi {
   renderGerberSvg: (testId: number) => Promise<string>
 }
 
+export interface ProbeApi {
+  connect: () => Promise<ProbeConnectionStatus>
+  status: () => Promise<ProbeConnectionStatus>
+  disconnect: () => Promise<ProbeConnectionStatus>
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     api: {
       tests: TestsApi
       parsing: ParsingApi
+      probe: ProbeApi
     }
   }
 }
