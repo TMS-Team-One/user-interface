@@ -25,6 +25,14 @@ _READING_PATTERN = re.compile(
 )
 
 
+class VoltageMeterConnectionError(RuntimeError):
+    """The Arduino voltage meter is missing or its serial connection was lost."""
+
+
+class VoltageMeasurementError(RuntimeError):
+    """The voltage meter responded but could not produce a valid measurement."""
+
+
 @dataclass(frozen=True, slots=True)
 class VoltageReading:
     """One single-ended ADS1115 channel reading."""
@@ -39,11 +47,23 @@ def _create_connection(port: str | None, read_timeout: float) -> serial.Serial:
     if read_timeout <= 0:
         raise ValueError("read_timeout must be greater than zero")
 
-    return serial.Serial(
-        port=port or get_port(SerialDevice.VOLTAGE_METER),
-        baudrate=BAUD_RATE,
-        timeout=read_timeout,
-    )
+    try:
+        selected_port = port or get_port(SerialDevice.VOLTAGE_METER)
+    except RuntimeError as error:
+        raise VoltageMeterConnectionError(
+            "Voltage meter not found. Connect the Arduino/ADS1115 and try again."
+        ) from error
+
+    try:
+        return serial.Serial(
+            port=selected_port,
+            baudrate=BAUD_RATE,
+            timeout=read_timeout,
+        )
+    except (OSError, serial.SerialException) as error:
+        raise VoltageMeterConnectionError(
+            "Could not open the voltage meter. Reconnect the Arduino and try again."
+        ) from error
 
 
 class ADS1115VoltageMeter:
@@ -94,7 +114,12 @@ class ADS1115VoltageMeter:
             # Ignore measurements buffered before the probe was placed or moved.
             reset_input_buffer = getattr(self.arduino, "reset_input_buffer", None)
             if callable(reset_input_buffer):
-                reset_input_buffer()
+                try:
+                    reset_input_buffer()
+                except (OSError, serial.SerialException) as error:
+                    raise VoltageMeterConnectionError(
+                        "Voltage meter connection was lost. Reconnect the Arduino and try again."
+                    ) from error
 
             deadline = monotonic() + max_wait
             window_started = monotonic()
@@ -172,25 +197,39 @@ class ADS1115VoltageMeter:
             voltage=float(match.group("voltage")),
         )
         if reading.channel not in CHANNELS:
-            raise RuntimeError(f"Arduino returned invalid channel {reading.channel}")
+            raise VoltageMeasurementError(
+                f"Arduino returned invalid channel {reading.channel}"
+            )
         if not -32_768 <= reading.raw <= 32_767:
-            raise RuntimeError(f"Arduino returned invalid raw value {reading.raw}")
+            raise VoltageMeasurementError(
+                f"Arduino returned invalid raw value {reading.raw}"
+            )
         if not math.isfinite(reading.voltage):
-            raise RuntimeError("Arduino returned a non-finite voltage")
+            raise VoltageMeasurementError("Arduino returned a non-finite voltage")
         return reading
 
     @staticmethod
     def _raise_for_device_error(line: str) -> None:
         if "ADS1115 not connected" in line:
-            raise RuntimeError("Arduino reports that the ADS1115 is not connected")
+            raise VoltageMeasurementError(
+                "The Arduino is connected, but the ADS1115 is not detected. "
+                "Check its wiring and try again."
+            )
         if "ADS1115 initialization failed" in line:
-            raise RuntimeError(line)
+            raise VoltageMeasurementError(
+                "The Arduino could not initialize the ADS1115. Check its wiring and try again."
+            )
         if line.startswith("Fehler beim Lesen von Kanal"):
-            raise RuntimeError(f"Arduino measurement failed: {line}")
+            raise VoltageMeasurementError(f"Arduino measurement failed: {line}")
 
     def _next_reading(self, deadline: float) -> VoltageReading:
         while monotonic() < deadline:
-            raw_line = self.arduino.readline()
+            try:
+                raw_line = self.arduino.readline()
+            except (OSError, serial.SerialException) as error:
+                raise VoltageMeterConnectionError(
+                    "Voltage meter connection was lost. Reconnect the Arduino and try again."
+                ) from error
             if not raw_line:
                 continue
 
