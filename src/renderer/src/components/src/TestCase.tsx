@@ -15,7 +15,7 @@ const TestCase = ({ testCase }: { testCase: TestSummary }): React.JSX.Element =>
         </span>
       }
     >
-      <Tabs defaultValue="circuit-board" className="flex-1">
+      <Tabs defaultValue="circuit-board" className="min-h-0 flex-1">
         <TabsList>
           <TabsTrigger value="circuit-board">
             <Cpu></Cpu>Circuit Board
@@ -25,12 +25,12 @@ const TestCase = ({ testCase }: { testCase: TestSummary }): React.JSX.Element =>
           </TabsTrigger>
           {/** <TabsTrigger value="chat">Chat with your PCB</TabsTrigger> **/}
         </TabsList>
-        <TabsContent value="circuit-board" className="flex flex-1">
+        <TabsContent value="circuit-board" className="flex min-h-0 flex-1">
           <div className="w-full h-full p-2">
             <CircuitBoard testCase={testCase} />
           </div>
         </TabsContent>
-        <TabsContent value="logs" className="flex flex-1">
+        <TabsContent value="logs" className="flex min-h-0 flex-1">
           <div className="w-full h-full p-2">
             <Logs testCase={testCase} />
           </div>

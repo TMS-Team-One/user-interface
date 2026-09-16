@@ -19,9 +19,9 @@ function renderGerberSvg(gerberFileContent: string, id: string): Promise<string>
   })
 }
 
-function runPythonScript(scriptPath: string, stdinInput: string): Promise<string> {
+function runPythonScript(scriptPath: string, stdinInput: string, args: string[] = []): Promise<string> {
   return new Promise((resolve, reject) => {
-    const py = spawn(PYTHON_EXECUTABLE, [scriptPath])
+    const py = spawn(PYTHON_EXECUTABLE, [scriptPath, ...args])
     let stdout = ''
     let stderr = ''
 
@@ -48,7 +48,7 @@ export function registerParsingIpc(): void {
       throw new Error(`No test found with id ${testId}`)
     }
 
-    const stdout = await runPythonScript(PARSE_GBR_SCRIPT, test.gerberFileContent)
+    const stdout = await runPythonScript(PARSE_GBR_SCRIPT, test.gerberFileContent, [test.fileName])
     return JSON.parse(stdout)
   })
 

@@ -16,6 +16,17 @@ export function deleteTest(id: number): boolean {
   return changes > 0
 }
 
+export function deleteTests(ids: number[]): number {
+  if (ids.length === 0) return 0
+
+  const db = getDb()
+  const placeholders = ids.map(() => '?').join(', ')
+  const { changes } = db
+    .prepare(`DELETE FROM tests WHERE id IN (${placeholders})`)
+    .run(...ids)
+  return changes
+}
+
 export function getTestById(id: number): Test | undefined {
   const db = getDb()
   return db.prepare('SELECT * FROM tests WHERE id = ?').get(id) as Test | undefined
