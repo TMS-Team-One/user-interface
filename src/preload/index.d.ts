@@ -1,5 +1,12 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { ParsedPad, ProbeConnectionStatus, Test, TestSummary } from '../shared/types'
+import type {
+  ManualProbeCoordinates,
+  ManualProbeResult,
+  ParsedPad,
+  ProbeConnectionStatus,
+  Test,
+  TestSummary
+} from '../shared/types'
 
 export interface TestsApi {
   create: (testName: string, fileName: string, gerberFileContent: string) => Promise<Test>
@@ -17,6 +24,8 @@ export interface ProbeApi {
   connect: () => Promise<ProbeConnectionStatus>
   status: () => Promise<ProbeConnectionStatus>
   disconnect: () => Promise<ProbeConnectionStatus>
+  home: () => Promise<ProbeConnectionStatus>
+  runManualTest: (coordinates: ManualProbeCoordinates) => Promise<ManualProbeResult>
 }
 
 declare global {

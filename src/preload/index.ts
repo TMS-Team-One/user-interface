@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { ParsedPad, ProbeConnectionStatus, Test, TestSummary } from '../shared/types'
+import type {
+  ManualProbeCoordinates,
+  ManualProbeResult,
+  ParsedPad,
+  ProbeConnectionStatus,
+  Test,
+  TestSummary
+} from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -20,7 +27,10 @@ const api = {
   probe: {
     connect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:connect'),
     status: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:status'),
-    disconnect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:disconnect')
+    disconnect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:disconnect'),
+    home: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:home'),
+    runManualTest: (coordinates: ManualProbeCoordinates): Promise<ManualProbeResult> =>
+      ipcRenderer.invoke('probe:runManualTest', coordinates)
   }
 }
 

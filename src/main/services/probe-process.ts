@@ -21,7 +21,11 @@ class ProbeProcess {
   private nextId = 1
   private readonly pending = new Map<number, PendingRequest>()
 
-  request<T>(method: string): Promise<T> {
+  request<T>(
+    method: string,
+    params?: Record<string, unknown>,
+    options: { timeoutMs?: number } = {}
+  ): Promise<T> {
     const child = this.ensureStarted()
     const id = this.nextId++
 
@@ -29,7 +33,7 @@ class ProbeProcess {
       const timeout = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`Hardware request '${method}' timed out`))
-      }, 60_000)
+      }, options.timeoutMs ?? 60_000)
 
       this.pending.set(id, {
         resolve: resolve as (value: unknown) => void,
@@ -37,7 +41,7 @@ class ProbeProcess {
         timeout
       })
 
-      child.stdin.write(`${JSON.stringify({ id, method })}\n`, (error) => {
+      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`, (error) => {
         if (!error) return
         const pending = this.pending.get(id)
         if (!pending) return

@@ -22,4 +22,18 @@ export interface ParsedPad {
 
 export interface ProbeConnectionStatus {
   connected: boolean
+  homed: boolean
+}
+
+export interface ManualProbeCoordinates {
+  x: number
+  y: number
+  z: number
+}
+
+export interface ManualProbeResult {
+  target: ManualProbeCoordinates
+  voltage: number
+  unit: 'V'
+  retracted: boolean
 }
