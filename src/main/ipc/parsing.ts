@@ -1,11 +1,8 @@
-import { app, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { spawn } from 'child_process'
-import { join } from 'path'
 import gerberToSvg from 'gerber-to-svg'
 import { getTestById } from '../db/tests.repository'
-
-const PYTHON_EXECUTABLE = process.platform === 'win32' ? 'python' : 'python3'
-const PARSE_GBR_SCRIPT = join(app.getAppPath(), 'src', 'main', 'parsing', 'parse-gbr-files.py')
+import { getGerberParserCommand } from '../python/parser-runtime'
 
 function renderGerberSvg(gerberFileContent: string, id: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -19,9 +16,20 @@ function renderGerberSvg(gerberFileContent: string, id: string): Promise<string>
   })
 }
 
-function runPythonScript(scriptPath: string, stdinInput: string): Promise<string> {
+function runGerberParser(stdinInput: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const py = spawn(PYTHON_EXECUTABLE, [scriptPath])
+    let parserCommand
+    try {
+      parserCommand = getGerberParserCommand()
+    } catch (error) {
+      reject(error)
+      return
+    }
+
+    const py = spawn(parserCommand.command, parserCommand.args, {
+      cwd: parserCommand.cwd,
+      windowsHide: true
+    })
     let stdout = ''
     let stderr = ''
 
@@ -30,7 +38,7 @@ function runPythonScript(scriptPath: string, stdinInput: string): Promise<string
     py.on('error', reject)
     py.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(stderr || `${scriptPath} exited with code ${code}`))
+        reject(new Error(stderr || `Gerber parser exited with code ${code}`))
         return
       }
       resolve(stdout)
@@ -48,7 +56,7 @@ export function registerParsingIpc(): void {
       throw new Error(`No test found with id ${testId}`)
     }
 
-    const stdout = await runPythonScript(PARSE_GBR_SCRIPT, test.gerberFileContent)
+    const stdout = await runGerberParser(test.gerberFileContent)
     return JSON.parse(stdout)
   })
 

@@ -12,7 +12,13 @@ An Electron application with React and TypeScript
 
 ```bash
 $ npm install
+$ python3 -m venv .venv
+$ .venv/bin/python -m pip install -r src/main/requirements-build.txt
 ```
+
+On Windows, use `.venv\\Scripts\\python.exe` instead of `.venv/bin/python`.
+Set `PROBE_PILOT_PYTHON` if the development app should use a different Python
+interpreter.
 
 ### Development
 
@@ -21,6 +27,10 @@ $ npm run dev
 ```
 
 ### Build
+
+Packaging first creates a standalone Python executable for the current operating
+system and architecture. PyInstaller does not cross-compile, so Windows, macOS,
+and Linux packages must each be built on their respective operating system.
 
 ```bash
 # For windows
