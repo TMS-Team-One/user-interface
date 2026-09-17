@@ -126,6 +126,7 @@ export interface LocalisationResult {
     inliers: number
     rms_mm: number
     outline_support: number | null
+    outline_consistency?: number | null
     pass: boolean
     /** How many camera frames were localised and how many agree with this pose. */
     frames?: number
@@ -198,6 +199,10 @@ export interface ChatSendRequest {
   runId: string
   projectId: number
   message: string
+  /** The camera stream the agent's take_picture tool grabs from. */
+  cameraUrl: string
+  /** The board's outline in mm, for finding the board in a picture. */
+  outline: [number, number][]
 }
 
 export interface ChatResult {

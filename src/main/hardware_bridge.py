@@ -37,7 +37,10 @@ APP_SYSTEM_PROMPT_SUFFIX = """
 You are talking to the operator inside the ProbePilot desktop app. Use the
 project tools to look at the board (its files, the testable pads in board
 millimetres, the last test run and the board pose on the bed) before answering
-questions about it. Answer briefly and say when something is not known yet.
+questions about it, and take_picture to see the bed through the camera: the
+picture is shown to you right after the tool result, so describe what you see
+when that matters, and say whether the board was found. Answer briefly and say
+when something is not known yet.
 """
 
 
@@ -297,6 +300,7 @@ class HardwareBridge:
         """The agent with the printer's tools and the tools that look at the project."""
         from src.main.agent.graph import DEFAULT_SYSTEM_PROMPT, build_agent_graph
         from src.main.agent.model import create_chat_model
+        from src.main.tools.camera import create_camera_tools
         from src.main.tools.motion import create_motion_tools
         from src.main.tools.project import create_project_tools
         from src.main.tools.registry import ToolRegistry
@@ -306,6 +310,7 @@ class HardwareBridge:
         registry.register_many(create_motion_tools(_AgentMotionController(self)))
         registry.register_many(create_voltage_tools(_AgentVoltageMeter(self)))
         registry.register_many(create_project_tools(context))
+        registry.register_many(create_camera_tools(context))
         return build_agent_graph(
             create_chat_model(),
             registry,

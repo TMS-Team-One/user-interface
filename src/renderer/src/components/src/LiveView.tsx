@@ -9,22 +9,10 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { useBoardRender } from '@/hooks/use-board-render'
 import { outlineFromRender } from '@/lib/board-outline'
+import { DEFAULT_CAMERA_URL, loadCameraUrl, saveCameraUrl } from '@/lib/camera-url'
 import { playWhepStream } from '@/lib/whep'
 
 const FRAME_JPEG_QUALITY = 0.92
-// The tester's camera: a MediaMTX WebRTC stream on the Raspberry Pi. The last
-// address used is kept in this browser's storage.
-const DEFAULT_CAMERA_URL = 'http://100.127.246.75:8889/pcb/'
-const CAMERA_URL_KEY = 'cameraUrl'
-
-function loadCameraUrl(): string {
-  try {
-    return localStorage.getItem(CAMERA_URL_KEY) ?? DEFAULT_CAMERA_URL
-  } catch {
-    return DEFAULT_CAMERA_URL
-  }
-}
-
 // Captures the current video frame as a JPEG, the form the localisation takes.
 function captureFrame(video: HTMLVideoElement): Promise<ArrayBuffer> {
   const canvas = document.createElement('canvas')
@@ -193,11 +181,7 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
   const connectCamera = (): void => {
     const url = urlDraft.trim()
     if (!url) return
-    try {
-      localStorage.setItem(CAMERA_URL_KEY, url)
-    } catch {
-      // storage unavailable: the address still applies to this session
-    }
+    saveCameraUrl(url)
     setCameraUrl(url)
   }
 

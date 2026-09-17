@@ -1,18 +1,17 @@
 import { ipcMain } from 'electron'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { BoardPose, LocalisationResult, PrinterPosition, Project } from '../../shared/types'
 import { requireProject, saveProjectPose } from '../db/projects.repository'
 import { probeProcess } from '../services/probe-process'
+import { writeCadFiles } from '../vision/cad-dir'
 import { agreedLocalisation } from '../vision/consensus'
 
 // The last localisation of each project, for the sync that follows it.
 const lastLocalisation = new Map<number, LocalisationResult>()
 
-// cad_features.load finds drill files by their M48 header and the top solder
-// mask by a .gts name, so the mask is written under a fixed name. Every frame is
-// localised on its own; the pose most frames agree on is the answer.
+// Every frame is localised on its own; the pose most frames agree on is the answer.
 async function locateBoard(
   project: Project,
   frames: ArrayBuffer[],
@@ -21,13 +20,7 @@ async function locateBoard(
   const dir = await mkdtemp(join(tmpdir(), 'probepilot-locate-'))
   try {
     const cadDir = join(dir, 'cad')
-    await mkdir(cadDir)
-    for (const file of project.files) {
-      if (file.kind === 'drill') await writeFile(join(cadDir, file.fileName), file.content)
-      if (file.layerType === 'soldermask' && file.layerSide === 'top') {
-        await writeFile(join(cadDir, 'top-solder-mask.gts'), file.content)
-      }
-    }
+    await writeCadFiles(project, cadDir)
     const located: { result: LocalisationResult; annotatedPath: string }[] = []
     for (const [index, frame] of frames.entries()) {
       const image = join(dir, `frame-${index}.jpg`)

@@ -169,7 +169,11 @@ largest of them; a top solder mask adds the round pads as further features but
 is optional. A pose counts as found with the four holes when `--outline
 outline.json` gives the board's edge as `[[x, y], ...]` in mm and that edge
 shows a colour change in the image along at least 55 % of its length; without
-an outline a fifth feature beyond the holes is required. The camera must look
+an outline a fifth feature beyond the holes is required. A four-hole pose must
+also show the board's usual colour just inside the rim along at least half of
+it, which is what tells the board's edge from other edges of a busy bed. Faint
+circles from a second, lower-quality detection pass may complete a hole
+assignment but never start one. The camera must look
 straight down at the bed: at a flat angle the holes turn into ellipses whose
 centres come out 1 to 2 mm off, and such a frame fails the rim check on
 purpose. From the printer's camera (720p, about 5 px per mm) the holes are the
@@ -188,9 +192,17 @@ bridge.
 
 The bridge's `chat` method answers one turn with the LangGraph agent. The agent
 gets the printer and meter tools and, from the context the app sends with every
-message (name, files, pads with testability, last run, pose), the project tools
-in `src/main/tools/project.py`. The history is kept per project for as long as
-the bridge runs, and the printer is homed before the first message of a project.
+message (name, files, pads with testability, last run, pose, netlist), the
+project tools in `src/main/tools/project.py`, plus `take_picture` from
+`src/main/tools/camera.py`: one frame over RTSP from the camera stream the app
+names (`camera_url`), saved under `pictures_dir`, with the board localisation
+run on it when `cad_dir` and `outline` are given. The model gets the summary
+and, in the message after the tool result, the picture itself (downscaled, low
+detail), since images cannot travel inside tool results; the history keeps only
+a note in its place. The annotated picture is attached to the chat timeline for
+the operator. The history is
+kept per project for as long as the bridge runs, and the printer is homed
+before the first message of a project.
 
 ## Arduino firmware
 

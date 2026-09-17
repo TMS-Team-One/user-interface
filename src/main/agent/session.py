@@ -9,6 +9,9 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from src.main.agent.graph import without_pictures
+from src.main.tools.camera import picture_data_url
+
 
 EventEmitter = Callable[[dict[str, object]], None]
 
@@ -83,7 +86,7 @@ class AgentChatSessions:
                     part.get("data"), timeline, produced_messages, emit
                 )
 
-        self._messages[project_id] = [*input_messages, *produced_messages]
+        self._messages[project_id] = [*input_messages, *(without_pictures(m) for m in produced_messages)]
         return self.history(project_id)
 
     def _home_new_chat(
@@ -206,7 +209,13 @@ class AgentChatSessions:
             payload = {"ok": False, "message": str(message.content)}
 
         if payload.get("ok"):
-            item.update({"status": "success", "result": payload.get("result")})
+            result = payload.get("result")
+            # The picture goes to the timeline for the operator; the model only
+            # got the summary in the tool message.
+            picture = picture_data_url(result)
+            if picture:
+                result = {**result, "picture_data_url": picture}
+            item.update({"status": "success", "result": result})
             emit({"type": "tool-completed", "item": dict(item)})
         else:
             item.update(

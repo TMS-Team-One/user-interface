@@ -62,7 +62,11 @@ environment or in a `.env` file in this directory; uploads of unrecognised files
 can be classified with the same key (`src/main/ai/classify-file.ts`). The agent
 drives the printer through the bridge and looks at the project through its own
 tools, so the printer has to be connected from the sidebar before the chat takes
-a message, and it homes the printer before the first one. The chat sits to the
+a message, and it homes the printer before the first one. It can also take a
+picture with the camera (over RTSP from the same MediaMTX server the Live View
+plays, port 8554), looks for the board in it and is shown the picture, so it
+can describe what the camera sees; the picture appears in the chat and is kept
+under the app's user data. The chat sits to the
 right of the project's tabs and can be hidden with the button in the header.
 
 The sidebar's footer connects to the Ultimaker and opens the manual controls:
