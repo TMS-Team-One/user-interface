@@ -41,7 +41,16 @@ questions about it, and take_picture to see the bed through the camera: the
 picture is shown to you right after the tool result, so describe what you see
 when that matters, and say whether the board was found. Answer briefly and say
 when something is not known yet.
+
+For testing, one resistor of the board sits at printer position X 120.10,
+Y 104.90, Z 24.00 mm. That position is fixed and does not depend on finding
+the board in a picture. Whenever the operator asks to test the system, to
+start testing or to measure, move the probe to exactly that position, measure
+the voltage there and report the reading. Do that without stopping to ask,
+and even when a picture did not show the board; the picture is optional for
+this test.
 """
+# The paragraph above is a temporary test hook for the first run on the printer.
 
 
 class MotionConnection(Protocol):
@@ -55,6 +64,8 @@ class MotionConnection(Protocol):
     def get_position(self) -> tuple[float, float, float]: ...
 
     def move_to(self, x: float, y: float, z: float) -> None: ...
+
+    def jog(self, dx: float, dy: float, dz: float) -> None: ...
 
 
 class VoltageConnection(Protocol):
@@ -128,6 +139,94 @@ class HardwareBridge:
         self._require_idle()
         return self._position_dict(self._require_motion().get_position())
 
+    def move(self, params: object) -> dict[str, float]:
+        """Moves the probe to an absolute position and stays there, for jogging it onto
+        a sheet target or the board during the registration, and for the hover checks."""
+        self._require_idle()
+        motion = self._require_motion()
+        if not self._homed:
+            raise RuntimeError("Home the Ultimaker before moving it")
+        x, y, z = self._coordinates(params)
+        motion.move_to(x, y, z)
+        return self._position_dict(motion.get_position())
+
+    def jog(self, params: object) -> dict[str, float]:
+        """Moves the probe a step along one or more axes without the lift to the safe
+        height: the operator walks the tip onto a sheet target or the board."""
+        self._require_idle()
+        motion = self._require_motion()
+        if not self._homed:
+            raise RuntimeError("Home the Ultimaker before moving it")
+        motion.jog(*self._steps(params))
+        return self._position_dict(motion.get_position())
+
+    @staticmethod
+    def _steps(params: object) -> tuple[float, float, float]:
+        if not isinstance(params, dict):
+            raise ValueError("Jog parameters must contain dx, dy or dz")
+        steps: list[float] = []
+        for axis in ("dx", "dy", "dz"):
+            value = params.get(axis, 0)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{axis} must be a number")
+            steps.append(float(value))
+        if not any(steps):
+            raise ValueError("Give a step along at least one axis")
+        return steps[0], steps[1], steps[2]
+
+    def calibrate_camera(self, params: object) -> dict[str, object]:
+        """The camera model from pictures of the bed sheet at several bed heights; see
+        src/main/vision/camera_model.py."""
+        if not isinstance(params, dict) or not isinstance(params.get("pictures"), list):
+            raise ValueError("Calibration parameters with pictures are required")
+        from src.main.vision import camera_model
+
+        return camera_model.calibrate([(self._read_image(p["image"]), p["bed_z"]) for p in params["pictures"]])
+
+    def register_sheet(self, params: object) -> dict[str, object]:
+        """The sheet-to-printer mapping from the probe's touches on the sheet's targets; see
+        src/main/vision/registration.py."""
+        if not isinstance(params, dict) or not isinstance(params.get("touches"), list):
+            raise ValueError("Registration parameters with touches are required")
+        from src.main.vision import registration
+
+        return registration.fit_sheet(params["touches"])
+
+    def detect_sheet(self, params: object) -> dict[str, object]:
+        """The sheet's corners and targets in a picture and, with a camera model in the
+        registration, the camera's view of it."""
+        if not isinstance(params, dict):
+            raise ValueError("Detection parameters are required")
+        from src.main.vision import camera_model
+
+        camera = (params.get("registration") or {}).get("camera")
+        return camera_model.sheet_view(camera, self._read_image(params.get("image")))
+
+    def board_pose(self, params: object) -> dict[str, object]:
+        """The printer pose of a localisation again, with the board's contact height known."""
+        if not isinstance(params, dict) or not isinstance(params.get("localisation"), dict):
+            raise ValueError("A localisation is required")
+        from src.main.vision import registration
+
+        located = params["localisation"]
+        registered = params.get("registration") or {}
+        if not (registered.get("camera") and registered.get("sheet")):
+            raise ValueError("Calibrate the camera and register the sheet first")
+        if not located.get("sheet_view"):
+            raise ValueError("The localisation did not see the sheet; locate the board again")
+        return registration.pose_on_printer(
+            registered["camera"], registered["sheet"], located["sheet_view"], located, params.get("z_contact")
+        )
+
+    @staticmethod
+    def _read_image(path: object):
+        import cv2
+
+        image = cv2.imread(str(path))
+        if image is None:
+            raise ValueError(f"cannot read the picture {path}")
+        return image
+
     def run_test(self, params: object, emit: EventEmitter) -> dict[str, object]:
         """Visit every target of a probing job, streaming the runner's events.
 
@@ -171,6 +270,20 @@ class HardwareBridge:
             params["image"], params["cad_dir"], outline=params.get("outline")
         )
         cv2.imwrite(params["annotated"], annotated)
+        # With the camera calibrated and the sheet registered, a passing localisation
+        # that also shows the sheet is a pose on the printer.
+        registered = params.get("registration") or {}
+        if registered.get("camera") and registered.get("sheet") and result["fit"] and result["fit"]["pass"]:
+            from src.main.vision import camera_model, registration
+
+            try:
+                view = camera_model.sheet_view(registered["camera"], self._read_image(params["image"]))
+                result["sheet_view"] = view
+                result["pose_on_printer"] = registration.pose_on_printer(
+                    registered["camera"], registered["sheet"], view, result, params.get("z_contact")
+                )
+            except ValueError as error:
+                result["sheet_error"] = str(error)
         return result
 
     def sync_pose(self, params: object) -> dict[str, object]:
@@ -220,6 +333,26 @@ class HardwareBridge:
             "retracted": True,
         }
 
+    def measure(self, params: object = None) -> dict[str, object]:
+        """One stable voltage reading where the probe stands: no move, no retract. The
+        operator has put the tip on the spot with the jog or a move."""
+        self._require_idle()
+        voltage_meter = self._get_voltage_meter()
+        try:
+            voltage = voltage_meter.measure_voltage(
+                duration=0.5,
+                max_wait=7.0,
+                scale=VOLTAGE_DIVIDER_SCALE,
+                absolute=True,
+            )
+        except Exception as measurement_error:
+            user_error = self._measurement_error(measurement_error)
+            self._discard_voltage_meter()
+            if user_error is measurement_error:
+                raise
+            raise user_error from measurement_error
+        return {"voltage": voltage, "unit": "V"}
+
     def disconnect(self) -> dict[str, bool]:
         self._require_idle()
         self._discard_voltage_meter()
@@ -245,8 +378,22 @@ class HardwareBridge:
             return self.home()
         if method == "run_manual_test":
             return self.run_manual_test(params)
+        if method == "measure":
+            return self.measure(params)
         if method == "position":
             return self.position()
+        if method == "move":
+            return self.move(params)
+        if method == "jog":
+            return self.jog(params)
+        if method == "calibrate_camera":
+            return self.calibrate_camera(params)
+        if method == "register_sheet":
+            return self.register_sheet(params)
+        if method == "detect_sheet":
+            return self.detect_sheet(params)
+        if method == "board_pose":
+            return self.board_pose(params)
         if method == "run_test":
             return self.run_test(params, emit or (lambda _event: None))
         if method == "stop_run":

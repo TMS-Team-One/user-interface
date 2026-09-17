@@ -78,9 +78,35 @@ and remembered locally). "Locate board" takes three frames of the stream and
 runs the board localisation on each against the project's drill files (and the
 top solder mask when there is one); the pose counts when most frames agree on
 it. "Locate from image" does the same with one photo. The camera has to look
-straight down at the bed. Put the probe on one of the localised features, enter
-or read the printer position and press "Sync camera and printer": the board's
-pose is stored with the project and every test run uses it. Runs visit only the
+straight down at the bed.
+
+Registering the camera once makes every localisation a pose on the printer
+without touching anything again. Print `python3 -m src.scripts.marker_sheet
+bed_sheet.pdf` (A3, the whole glass plate; `--a4` for the back 180 mm of it) at
+100 %, cut it out, tape it flat on the glass with the bar at the back and put
+the fixture on top. Then, in the Live View, "Register camera" opens the panel
+with three steps. "Calibrate camera" moves the bed down three times 15 mm from
+its current height, takes a picture of the sheet at each height and moves back:
+the sheet's shrinking gives the lens's focal length, its corners the lens
+distortion. "Find targets" marks the sheet's numbered target corners on the
+video. The touches are made from the manual controls in the sidebar: jog the
+tip onto a target corner with the plus and minus buttons (0.1, 1 or 10 mm per
+press, straight moves without the lift to the safe height) until it touches the
+paper, press "Take position" for that target, three or four targets, then
+"Register sheet": the touches give the sheet-to-printer mapping, with a
+residual that catches a missed corner, and the bed height at which the tip
+touches the paper. After a localisation, "Hover over the board" parks the tip
+10 mm above the board's middle; jog Z down until the tip touches the board and
+press "Capture contact": that is the board's contact height, kept with the
+project. From then on every passing localisation that
+shows part of the sheet is a pose on the printer, at any bed height, corrected
+for the board's height above the paper. Until the board is touched its height is
+estimated from its apparent size, good to half a millimetre. The camera and the
+sheet are kept under the app's user data, once per tester; a moved sheet needs
+the touches again, a bumped camera nothing. Without it, the one-pad sync still works: put the probe on one
+of the localised features, enter or read the printer position and press "Sync
+camera and printer". Either way the board's pose is stored with the project and
+every test run uses it. Runs visit only the
 testable pads: top side, at least 0.6 mm across, not under or within 1 mm of a
 component of the STEP model (`src/main/testing/testable-pads.ts`).
 

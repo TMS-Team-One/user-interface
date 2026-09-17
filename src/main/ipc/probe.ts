@@ -1,8 +1,11 @@
 import { ipcMain } from 'electron'
 import type {
+  JogStep,
   ManualProbeCoordinates,
-  ManualProbeResult,
-  ProbeConnectionStatus
+  PrinterPosition,
+  ProbeConnectionStatus,
+  ProbeResult,
+  VoltageReading
 } from '../../shared/types'
 import { probeProcess } from '../services/probe-process'
 
@@ -20,12 +23,24 @@ export function registerProbeIpc(): void {
     probeProcess.request<ProbeConnectionStatus>('home', undefined, { timeoutMs: 120_000 })
   )
   ipcMain.handle(
-    'probe:runManualTest',
-    (_event, coordinates: ManualProbeCoordinates): Promise<ManualProbeResult> =>
-      probeProcess.request<ManualProbeResult>(
+    'probe:move',
+    (_event, coordinates: ManualProbeCoordinates): Promise<PrinterPosition> =>
+      probeProcess.request<PrinterPosition>('move', { ...coordinates }, { timeoutMs: 120_000 })
+  )
+  ipcMain.handle('probe:jog', (_event, step: JogStep): Promise<PrinterPosition> =>
+    probeProcess.request<PrinterPosition>('jog', { ...step }, { timeoutMs: 120_000 })
+  )
+  // Move to a position, measure there and retract: one pad probed by hand.
+  ipcMain.handle(
+    'probe:probeAt',
+    (_event, coordinates: ManualProbeCoordinates): Promise<ProbeResult> =>
+      probeProcess.request<ProbeResult>(
         'run_manual_test',
         { ...coordinates },
         { timeoutMs: 120_000 }
       )
+  )
+  ipcMain.handle('probe:measure', (): Promise<VoltageReading> =>
+    probeProcess.request<VoltageReading>('measure', undefined, { timeoutMs: 60_000 })
   )
 }

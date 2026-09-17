@@ -40,6 +40,11 @@ class FakeMotion:
         self.moves.append((x, y, z))
         self.position = (x, y, z)
 
+    def jog(self, dx: float, dy: float, dz: float) -> None:
+        x, y, z = self.position
+        self.position = (x + dx, y + dy, z + dz)
+        self.moves.append(self.position)
+
 
 class FakeVoltageMeter:
     def __init__(self, voltage: float = 3.3, error: Exception | None = None) -> None:
@@ -81,9 +86,9 @@ def test_position_validation_keeps_probe_above_minimum_safe_z() -> None:
     motion = object.__new__(UltimakerMotion)
 
     try:
-        motion._validate_position(10.0, 20.0, 9.9)
+        motion._validate_position(10.0, 20.0, -0.1)
     except ValueError as error:
-        assert "outside allowed range [10.0, 205.0]" in str(error)
+        assert "outside allowed range [0.0, 205.0]" in str(error)
     else:
         raise AssertionError("Unsafe Z position was accepted")
 
@@ -333,3 +338,87 @@ def test_hardware_requests_are_refused_during_a_run() -> None:
             bridge.run_test(probing_job(), lambda _event: None)
     finally:
         bridge._run_lock.release()
+
+
+def test_move_requires_homing_and_reports_the_position() -> None:
+    motion = FakeMotion()
+    bridge = HardwareBridge(lambda: motion, FakeVoltageMeter)
+    bridge.connect()
+
+    with pytest.raises(RuntimeError, match="Home the Ultimaker"):
+        bridge.move({"x": 10, "y": 20, "z": 30})
+
+    bridge.home()
+    assert bridge.move({"x": 10, "y": 20, "z": 30}) == {"x": 10.0, "y": 20.0, "z": 30.0}
+    assert motion.moves[-1] == (10.0, 20.0, 30.0)
+
+
+def test_jog_moves_relative_without_the_lift_and_slowly_near_the_board() -> None:
+    motion = object.__new__(UltimakerMotion)
+    sent: list[str] = []
+    motion._send_gcode = lambda command, timeout=60: sent.append(command) or ["ok"]
+    motion.get_position = lambda: (10.0, 20.0, 25.0)
+
+    motion.jog(1.0, 0.0, 0.0)
+    motion.jog(0.0, 0.0, -0.1)
+
+    assert sent == ["G1 X11.00 Y20.00 F300", "M400", "G1 Z24.90 F300", "M400"]
+    with pytest.raises(ValueError, match="at most 10"):
+        motion.jog(0.0, 0.0, -10.5)
+    motion.get_position = lambda: (220.0, 20.0, 25.0)
+    with pytest.raises(ValueError, match="outside allowed range"):
+        motion.jog(5.0, 0.0, 0.0)
+
+
+def test_bridge_jog_requires_homing_and_reports_the_position() -> None:
+    motion = FakeMotion()
+    bridge = HardwareBridge(lambda: motion, FakeVoltageMeter)
+    bridge.connect()
+    with pytest.raises(RuntimeError, match="Home"):
+        bridge.jog({"dz": -1})
+    bridge.home()
+
+    assert bridge.jog({"dx": 1.5, "dz": -0.1}) == {"x": 1.5, "y": 0.0, "z": 204.9}
+    assert motion.moves[-1] == (1.5, 0.0, 204.9)
+    with pytest.raises(ValueError, match="at least one axis"):
+        bridge.jog({})
+    with pytest.raises(ValueError, match="dy must be a number"):
+        bridge.jog({"dy": "far"})
+
+
+def test_homing_extends_the_y_and_z_ranges_to_where_the_printer_homes() -> None:
+    motion = object.__new__(UltimakerMotion)
+    sent: list[str] = []
+    motion._send_gcode = lambda command, timeout=60: sent.append(command) or ["ok"]
+    motion.get_position = lambda: (0.0, 224.5, 218.35)
+
+    motion.home()
+
+    assert sent == ["G28", "M400"]
+    assert motion.Y_RANGE == (0.0, 224.5) and motion.Z_RANGE == (0.0, 218.35)
+    assert UltimakerMotion.Y_RANGE == (0.0, 223.0)  # only this printer, not the class
+    motion.jog(1.0, 0.0, -10.0)
+    assert sent[2:] == ["G1 X1.00 Y224.50 F3000", "M400", "G1 Z208.35 F1000", "M400"]
+    with pytest.raises(ValueError, match="Y=225.5 is outside"):
+        motion.jog(0.0, 1.0, 0.0)
+
+
+def test_measure_reads_where_the_probe_stands_without_moving() -> None:
+    motion = FakeMotion()
+    bridge = HardwareBridge(lambda: motion, FakeVoltageMeter)
+    bridge.connect()
+
+    assert bridge.measure() == {"voltage": 3.3, "unit": "V"}
+    assert motion.moves == [] and motion.home_calls == 0
+
+
+def test_measure_reports_unstable_voltage_and_drops_the_meter() -> None:
+    motion = FakeMotion()
+    bridge = HardwareBridge(
+        lambda: motion, lambda: FakeVoltageMeter(error=TimeoutError("Voltage did not stabilize"))
+    )
+    bridge.connect()
+
+    with pytest.raises(VoltageMeasurementError, match="did not stabilize"):
+        bridge.measure()
+    assert bridge._voltage_meter is None and motion.moves == []

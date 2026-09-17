@@ -3,20 +3,26 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type {
   BoardPose,
   BoardRender,
+  CameraRegistration,
   ChatEventEnvelope,
   ChatResult,
   ChatSendRequest,
   FileClassification,
   GerberParseResult,
+  JogStep,
   LiveEvent,
   LocalisationResult,
   ManualProbeCoordinates,
-  ManualProbeResult,
   PrinterPosition,
   ProbeConnectionStatus,
+  ProbeResult,
   Project,
   ProjectFile,
-  ProjectSummary
+  PrinterPose,
+  ProjectSummary,
+  SheetTouch,
+  SheetView,
+  VoltageReading
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -43,6 +49,15 @@ const api = {
     lastLocalisation: (projectId: number): Promise<LocalisationResult | null> =>
       ipcRenderer.invoke('vision:lastLocalisation', projectId),
     printerPosition: (): Promise<PrinterPosition> => ipcRenderer.invoke('vision:printerPosition'),
+    registration: (): Promise<CameraRegistration> => ipcRenderer.invoke('vision:registration'),
+    calibrateCamera: (frames: ArrayBuffer[], bedZs: number[]): Promise<CameraRegistration> =>
+      ipcRenderer.invoke('vision:calibrateCamera', frames, bedZs),
+    registerSheet: (touches: SheetTouch[]): Promise<CameraRegistration> =>
+      ipcRenderer.invoke('vision:registerSheet', touches),
+    detectSheet: (frame: ArrayBuffer): Promise<SheetView> =>
+      ipcRenderer.invoke('vision:detectSheet', frame),
+    boardPose: (projectId: number, zContact: number): Promise<PrinterPose> =>
+      ipcRenderer.invoke('vision:boardPose', projectId, zContact),
     syncPose: (
       projectId: number,
       featureId: number,
@@ -54,8 +69,12 @@ const api = {
     status: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:status'),
     disconnect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:disconnect'),
     home: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:home'),
-    runManualTest: (coordinates: ManualProbeCoordinates): Promise<ManualProbeResult> =>
-      ipcRenderer.invoke('probe:runManualTest', coordinates)
+    measure: (): Promise<VoltageReading> => ipcRenderer.invoke('probe:measure'),
+    probeAt: (coordinates: ManualProbeCoordinates): Promise<ProbeResult> =>
+      ipcRenderer.invoke('probe:probeAt', coordinates),
+    move: (coordinates: ManualProbeCoordinates): Promise<PrinterPosition> =>
+      ipcRenderer.invoke('probe:move', coordinates),
+    jog: (step: JogStep): Promise<PrinterPosition> => ipcRenderer.invoke('probe:jog', step)
   },
   chat: {
     history: (projectId: number): Promise<ChatResult> =>

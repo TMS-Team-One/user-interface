@@ -132,12 +132,16 @@ line, `{"id": 1, "method": "connect", "params": {...}}`, and answers each with
 starts one bridge and keeps it running; it owns the printer and meter
 connections, so nothing else opens their ports meanwhile.
 
-Methods: `connect`, `status`, `disconnect`, `home`, `position`,
-`run_manual_test` (x, y, z: move, measure, retract), `run_test` (a probing job,
-events as in `src/main/test_run/runner.py`; on a simulated head when no printer
-is connected), `stop_run`, `locate_board` (image, cad_dir, outline, annotated),
-`sync_pose` (located, pad_board_xy, printer_xyz), `chat` (project_id, message,
-context) and `chat_history` (project_id). A test run holds the hardware; other
+Methods: `connect`, `status`, `disconnect`, `home`, `position`, `move` (x, y,
+z: absolute, with the lift to the safe height), `jog` (dx, dy, dz: a step of at
+most 10 mm, straight), `measure` (one voltage reading where the probe stands),
+`run_manual_test` (x, y, z: move, measure, retract; no longer used by the app),
+`run_test` (a probing job, events as in `src/main/test_run/runner.py`; on a
+simulated head when no printer is connected), `stop_run`, `locate_board`
+(image, cad_dir, outline, annotated, registration, z_contact), `board_pose`,
+`calibrate_camera`, `register_sheet`, `detect_sheet`, `sync_pose` (located,
+pad_board_xy, printer_xyz), `chat` (project_id, message, context) and
+`chat_history` (project_id). A test run holds the hardware; other
 hardware requests are refused until it has finished or was stopped.
 
 ## Running a probing job
@@ -181,12 +185,31 @@ only features large enough to see, which is what the rim check is for. Requires
 `opencv-python-headless` from `requirements.txt`. `tests/test_locate_pcb.py`
 keeps three camera frames as fixtures.
 
-Quicker than the four-point calibration: locate the board, put the probe tip on
+The camera registration is done against the printed bed sheet
+(`src/main/vision/bed_sheet.py`: a chessboard with a marker in every white
+square, cut to the glass plate, four labelled chessboard corners as probe
+targets; printed with `src.scripts.marker_sheet`). `calibrate_camera` takes
+pictures of the sheet at several bed heights (`src/main/vision/camera_model.py`):
+the printer's Z steps give the focal length, the corners the lens distortion,
+both held in the camera model. `register_sheet` takes the probe's touches on
+the targets (`src/main/vision/registration.py`): a similarity from sheet to
+printer millimetres with its residual and the paper's contact height.
+`detect_sheet` reports the sheet's corners and targets in a picture and, with
+the model, the camera's pose against it. `locate_board` with the registration
+and the project's contact height returns `pose_on_printer`: the sheet seen in
+the same picture gives the camera's pose, the board's features are mapped from
+pixels to the plane at the board's height and fitted to the board's own
+coordinates, and the touches carry that onto the printer; `sheet_error` says
+why there is no pose when the sheet is not seen. `board_pose` recomputes the
+pose of a localisation once the board's contact height has been touched. The
+bridge's `move` method places the probe for the hovers; `jog` walks it in steps
+without the lift to the safe height, for the touches.
+
+Quicker but rougher, the one-pad sync: locate the board, put the probe tip on
 one of the localised features, read the printer position, and
 `python3 -m src.scripts.sync_pose` turns that one pad into the board's pose (its
 angle comes from the image; see `src/main/vision/sync.py` for the assumed
-camera mounting). The desktop app's Live View tab drives exactly this through the
-bridge.
+camera mounting).
 
 ## Chat about a project
 
