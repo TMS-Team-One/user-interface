@@ -1,4 +1,4 @@
-import { PlusIcon, RefreshCcw, Trash2Icon, XIcon } from 'lucide-react'
+import { Crosshair, ListChecks, PlusIcon, RefreshCcw, Trash2Icon, XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
@@ -119,38 +119,44 @@ function AppSidebar({
 
   return (
     <Sidebar>
-      <SidebarHeader className="flex mt-2 mx-2">
-        <h1 className="text-black text-2xl font-semibold font-sans">Probe Pilot</h1>
-        <div className="w-full flex justify-center">
-          <Button
-            className="w-fit justify-start"
-            onClick={() =>
-              openModal({
-                title: 'Add new test case',
-                content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
-              })
-            }
-          >
-            <PlusIcon />
-            Add new test case
-          </Button>
-        </div>
-        {testCaseHistory.length > 0 && (
-          <div className="w-full flex justify-center">
-            <Button className="w-fit justify-start" variant="ghost" onClick={toggleSelectMode}>
-              {selectMode ? (
-                <>
-                  <XIcon />
-                  Cancel
-                </>
-              ) : (
-                'Select'
-              )}
-            </Button>
+      <SidebarHeader className="gap-4 px-4 pb-3 pt-5">
+        <div className="flex items-center gap-3 px-0.5">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20">
+            <Crosshair className="size-5" />
           </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold leading-tight tracking-tight text-foreground">
+              Probe Pilot
+            </h1>
+            <p className="truncate text-xs text-muted-foreground">PCB test automation</p>
+          </div>
+        </div>
+
+        <Button
+          className="h-10 w-full justify-start rounded-xl px-3 shadow-sm"
+          onClick={() =>
+            openModal({
+              title: 'Add new test case',
+              content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
+            })
+          }
+        >
+          <PlusIcon className="size-4" />
+          Add new test case
+        </Button>
+
+        {testCaseHistory.length > 0 && (
+          <Button
+            className="h-9 w-full justify-start rounded-lg px-3 text-muted-foreground hover:text-foreground"
+            variant="ghost"
+            onClick={toggleSelectMode}
+          >
+            {selectMode ? <XIcon className="size-4" /> : <ListChecks className="size-4" />}
+            {selectMode ? 'Cancel selection' : 'Select test cases'}
+          </Button>
         )}
       </SidebarHeader>
-      <div className="p-2">
+      <div className="px-4 pb-2">
         <Separator />
       </div>
       <SidebarContent>
