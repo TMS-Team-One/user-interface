@@ -19,6 +19,11 @@ export interface ProjectFile extends FileClassification {
   content: string
 }
 
+/** A project file after SQLite has assigned its stable database ID. */
+export interface StoredProjectFile extends ProjectFile {
+  id: number
+}
+
 export interface ProjectFileSummary {
   fileName: string
   kind: FileKind
@@ -31,8 +36,8 @@ export interface ProjectSummary {
   files: ProjectFileSummary[]
 }
 
-export interface Project extends ProjectSummary {
-  files: ProjectFile[]
+export interface Project extends Omit<ProjectSummary, 'files'> {
+  files: StoredProjectFile[]
 }
 
 export interface ParsedPad {

@@ -24,6 +24,17 @@ async function projectContext(projectId: number): Promise<Record<string, unknown
   return {
     name: project.name,
     files: project.files.map((file) => `${file.fileName} (${file.kind})`),
+    // This is the only file collection exposed to the Python tools. It was
+    // selected by projectId above, so an arbitrary file ID cannot escape the
+    // current project boundary.
+    project_files: project.files.map((file) => ({
+      id: file.id,
+      file_name: file.fileName,
+      kind: file.kind,
+      layer_type: file.layerType,
+      layer_side: file.layerSide,
+      content: file.content
+    })),
     netlist: protel ? parseProtel(protel.content) : null,
     pads: pads.map((pad, index) => ({
       label: pad.net_name ?? `pad ${index + 1}`,

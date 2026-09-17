@@ -3,7 +3,8 @@ import type {
   Project,
   ProjectFile,
   ProjectFileSummary,
-  ProjectSummary
+  ProjectSummary,
+  StoredProjectFile
 } from '../../shared/types'
 import { getDb } from './client'
 
@@ -53,9 +54,9 @@ export function getProjectById(id: number): Project | undefined {
 
   const files = db
     .prepare(
-      'SELECT fileName, kind, layerType, layerSide, content FROM project_files WHERE projectId = ? ORDER BY id'
+      'SELECT id, fileName, kind, layerType, layerSide, content FROM project_files WHERE projectId = ? ORDER BY id'
     )
-    .all(id) as ProjectFile[]
+    .all(id) as StoredProjectFile[]
   return { ...project, files }
 }
 
