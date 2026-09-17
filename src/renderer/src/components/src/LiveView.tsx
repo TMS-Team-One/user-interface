@@ -13,6 +13,8 @@ import { DEFAULT_CAMERA_URL, loadCameraUrl, saveCameraUrl } from '@/lib/camera-u
 import { playWhepStream } from '@/lib/whep'
 
 const FRAME_JPEG_QUALITY = 0.92
+// How long to wait before playing the stream again after it ended on its own.
+const RECONNECT_DELAY_MS = 2000
 // Captures the current video frame as a JPEG, the form the localisation takes.
 function captureFrame(video: HTMLVideoElement): Promise<ArrayBuffer> {
   const canvas = document.createElement('canvas')
@@ -160,21 +162,25 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!videoRef.current) return
-    let stale = false
-    let stop: (() => void) | null = null
-    setCameraError(null)
-    playWhepStream(cameraUrl, videoRef.current, window.api.live.whep)
-      .then((stopStream) => {
-        if (stale) stopStream()
-        else stop = stopStream
+    const video = videoRef.current
+    if (!video) return
+    const controller = new AbortController()
+    let retry: ReturnType<typeof setTimeout> | null = null
+    const start = (): void => {
+      setCameraError(null)
+      playWhepStream(cameraUrl, video, window.api.live.whep, controller.signal, () => {
+        // The stream stopped on its own (camera or server restarted): try again shortly.
+        retry = setTimeout(start, RECONNECT_DELAY_MS)
+      }).catch((err) => {
+        if (!controller.signal.aborted) {
+          setCameraError(`No stream from ${cameraUrl}: ${describeError(err)}`)
+        }
       })
-      .catch((err) => {
-        if (!stale) setCameraError(`No stream from ${cameraUrl}: ${describeError(err)}`)
-      })
+    }
+    start()
     return () => {
-      stale = true
-      stop?.()
+      controller.abort()
+      if (retry) clearTimeout(retry)
     }
   }, [cameraUrl])
 
