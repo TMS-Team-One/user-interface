@@ -88,7 +88,8 @@ function ManualControlDialog(): React.JSX.Element {
       <DialogTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
+          className="rounded-lg"
           aria-label="Open manual controls"
           title="Manual controls"
         >

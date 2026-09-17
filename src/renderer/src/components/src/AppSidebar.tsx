@@ -1,4 +1,13 @@
-import { Crosshair, ListChecks, PlusIcon, RefreshCcw, Trash2Icon, XIcon } from 'lucide-react'
+import {
+  CircuitBoard as CircuitBoardIcon,
+  Crosshair,
+  ListChecks,
+  PlusIcon,
+  Printer,
+  RefreshCcw,
+  Trash2Icon,
+  XIcon
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
@@ -133,7 +142,7 @@ function AppSidebar({
         </div>
 
         <Button
-          className="h-10 w-full justify-start rounded-xl px-3 shadow-sm"
+          className="h-10 w-full justify-start px-3 shadow-sm"
           onClick={() =>
             openModal({
               title: 'Add new test case',
@@ -144,52 +153,70 @@ function AppSidebar({
           <PlusIcon className="size-4" />
           Add new test case
         </Button>
-
-        {testCaseHistory.length > 0 && (
-          <Button
-            className="h-9 w-full justify-start rounded-lg px-3 text-muted-foreground hover:text-foreground"
-            variant="ghost"
-            onClick={toggleSelectMode}
-          >
-            {selectMode ? <XIcon className="size-4" /> : <ListChecks className="size-4" />}
-            {selectMode ? 'Cancel selection' : 'Select test cases'}
-          </Button>
-        )}
       </SidebarHeader>
       <div className="px-4 pb-2">
         <Separator />
       </div>
-      <SidebarContent>
-        <SidebarGroup>
+      <SidebarContent className="px-2 pb-2">
+        <SidebarGroup className="p-0">
+          <div className="flex h-9 items-center justify-between px-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                Test cases
+              </span>
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold tabular-nums text-primary">
+                {testCaseHistory.length}
+              </span>
+            </div>
+            {testCaseHistory.length > 0 && (
+              <Button
+                className="h-7 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
+                variant="ghost"
+                onClick={toggleSelectMode}
+              >
+                {selectMode ? <XIcon className="size-3.5" /> : <ListChecks className="size-3.5" />}
+                {selectMode ? 'Cancel' : 'Select'}
+              </Button>
+            )}
+          </div>
           <SidebarGroupContent>
             {testCaseHistory.length === 0 || !testCaseHistory ? (
-              <p className="px-2 py-1.5 text-sm text-sidebar-foreground/70">
-                No test cases done yet.
-              </p>
+              <div className="mx-1 mt-1 flex flex-col items-center rounded-xl border border-dashed border-sidebar-border bg-sidebar-accent/30 px-4 py-8 text-center">
+                <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <CircuitBoardIcon className="size-4" />
+                </div>
+                <p className="text-sm font-medium text-foreground">No test cases yet</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Add a Gerber file to start testing a board.
+                </p>
+              </div>
             ) : (
-              <SidebarMenu>
+              <SidebarMenu className="gap-1.5">
                 {testCaseHistory.map((testCase) => (
-                  <SidebarMenuItem key={testCase.id} className="flex items-center gap-1">
+                  <SidebarMenuItem key={testCase.id} className="flex items-center gap-1 rounded-xl">
                     {selectMode && (
                       <Checkbox
-                        className="ml-2"
+                        className="ml-2 border-primary/40 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                         checked={selectedIds.has(testCase.id)}
                         onCheckedChange={() => toggleSelected(testCase.id)}
                         aria-label={`Select ${testCase.testName}`}
                       />
                     )}
                     <SidebarMenuButton
+                      className="h-10 rounded-xl px-3 hover:bg-sidebar-accent"
                       onClick={() =>
                         selectMode ? toggleSelected(testCase.id) : onSelectTestCase(testCase)
                       }
                     >
-                      {testCase.testName}
+                      {!selectMode && <CircuitBoardIcon className="text-primary" />}
+                      <span>{testCase.testName}</span>
                     </SidebarMenuButton>
                     {!selectMode && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <SidebarMenuAction
                             showOnHover
+                            className="right-2 top-2.5 size-6 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                             onClick={(e) => e.stopPropagation()}
                             aria-label={`Delete ${testCase.testName}`}
                           >
@@ -221,13 +248,18 @@ function AppSidebar({
         </SidebarGroup>
       </SidebarContent>
       {selectMode && (
-        <div className="mx-3 mb-2 flex items-center justify-between">
-          <span className="text-sm text-sidebar-foreground/70">{selectedIds.size} selected</span>
+        <div className="mx-3 mb-3 flex items-center justify-between rounded-xl bg-primary/10 px-3 py-2.5 ring-1 ring-primary/15">
+          <span className="text-xs font-medium text-primary">{selectedIds.size} selected</span>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={selectedIds.size === 0}>
+              <Button
+                className="rounded-lg"
+                variant="destructive"
+                size="sm"
+                disabled={selectedIds.size === 0}
+              >
                 <Trash2Icon />
-                Delete selected
+                Delete
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -246,44 +278,45 @@ function AppSidebar({
           </AlertDialog>
         </div>
       )}
-      <div className="p-1">
-        <Separator />
-      </div>
-      <SidebarFooter className="mx-3 mb-1 flex flex-row items-center justify-between">
-        <div>
-          {checkingConnection ? (
-            <div className="gap-3 flex flex-row items-center justify-center w-fit">
-              <div className="rounded-4xl bg-amber-500 size-2 animate-pulse"> </div>
-              <span className="text-amber-600 text-sm">Connecting…</span>
+      <SidebarFooter className="border-t border-sidebar-border p-3">
+        <div className="flex items-center gap-2.5 rounded-xl bg-sidebar-accent/50 p-2.5 ring-1 ring-sidebar-border">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background text-primary shadow-xs">
+            <Printer className="size-4" />
+          </div>
+          <div className="min-w-0 flex-1" title={connectionError}>
+            <p className="truncate text-xs font-medium text-foreground">Ultimaker 2+</p>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <span
+                className={`size-1.5 shrink-0 rounded-full ${
+                  checkingConnection
+                    ? 'animate-pulse bg-amber-500'
+                    : connectionEstablished
+                      ? 'bg-primary'
+                      : 'bg-muted-foreground/50'
+                }`}
+              />
+              <span className="truncate text-[11px] text-muted-foreground">
+                {checkingConnection
+                  ? 'Connecting…'
+                  : connectionEstablished
+                    ? 'Connected'
+                    : 'Not connected'}
+              </span>
             </div>
-          ) : connectionEstablished ? (
-            <div className="gap-3 flex flex-row items-center justify-center w-fit">
-              <div className="rounded-4xl bg-lime-600 size-2"> </div>
-              <span className="text-lime-600 text-sm">Connection established</span>
-            </div>
-          ) : (
-            <div
-              className="gap-3 flex flex-row items-center justify-center w-fit"
-              title={connectionError}
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5 [&_button]:rounded-lg">
+            <ManualControlDialog />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={checkingConnection}
+              onClick={handleConnectionRefresh}
+              aria-label="Connect to Ultimaker"
+              title={connectionError || 'Connect to Ultimaker'}
             >
-              <div className="rounded-4xl bg-red-600 size-2"> </div>
-              <span className="text-red-600 text-sm">No connection</span>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center">
-          <ManualControlDialog />
-          <Button
-            className="w-fit"
-            variant={'ghost'}
-            size={'icon'}
-            disabled={checkingConnection}
-            onClick={handleConnectionRefresh}
-            aria-label="Connect to Ultimaker"
-            title={connectionError || 'Connect to Ultimaker'}
-          >
-            <RefreshCcw className={checkingConnection ? 'animate-spin' : undefined}></RefreshCcw>
-          </Button>
+              <RefreshCcw className={checkingConnection ? 'animate-spin' : undefined} />
+            </Button>
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>
