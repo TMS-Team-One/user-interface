@@ -1,6 +1,4 @@
-import { app } from 'electron'
 import { spawn } from 'child_process'
-import { join } from 'path'
 import { unpackMeshes } from '../../shared/mesh-pack'
 import type { ParsedPad, Project } from '../../shared/types'
 import { getProjectModel } from '../db/projects.repository'
@@ -8,17 +6,21 @@ import { assignNets } from '../netlist/assign-nets'
 import { parseIpcD356 } from '../netlist/ipc-d-356'
 import { componentFootprints, markTestablePads, type MaskOpening } from '../testing/testable-pads'
 import { readExcellon } from './excellon'
+import { getGerberParserCommand } from '../python/parser-runtime'
 
-const PYTHON_EXECUTABLE = process.platform === 'win32' ? 'python' : 'python3'
-const PARSE_GBR_SCRIPT = join(app.getAppPath(), 'src', 'main', 'parsing', 'parse-gbr-files.py')
-
-function runPythonScript(
-  scriptPath: string,
-  stdinInput: string,
-  args: string[] = []
-): Promise<string> {
+function runGerberParser(stdinInput: string, args: string[] = []): Promise<string> {
   return new Promise((resolve, reject) => {
-    const py = spawn(PYTHON_EXECUTABLE, [scriptPath, ...args])
+    let parserCommand: ReturnType<typeof getGerberParserCommand>
+    try {
+      parserCommand = getGerberParserCommand()
+    } catch (error) {
+      reject(error)
+      return
+    }
+    const py = spawn(parserCommand.command, [...parserCommand.args, ...args], {
+      cwd: parserCommand.cwd,
+      windowsHide: true
+    })
     let stdout = ''
     let stderr = ''
 
@@ -27,7 +29,7 @@ function runPythonScript(
     py.on('error', reject)
     py.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(stderr || `${scriptPath} exited with code ${code}`))
+        reject(new Error(stderr || `Gerber parser exited with code ${code}`))
         return
       }
       resolve(stdout)
@@ -44,7 +46,7 @@ async function parseLayerPads(
   file: Project['files'][number],
   side: ParsedPad['side']
 ): Promise<ParsedPad[]> {
-  const stdout = await runPythonScript(PARSE_GBR_SCRIPT, file.content, [file.fileName])
+  const stdout = await runGerberParser(file.content, [file.fileName])
   const { pads } = JSON.parse(stdout) as {
     pads: Omit<ParsedPad, 'side' | 'testable' | 'untestableReason'>[]
   }
@@ -54,10 +56,7 @@ async function parseLayerPads(
 // The openings of the top solder mask are its flashes; the parser reports them
 // with "--all-flashes" since it otherwise only looks at copper.
 async function parseMaskOpenings(file: Project['files'][number]): Promise<MaskOpening[]> {
-  const stdout = await runPythonScript(PARSE_GBR_SCRIPT, file.content, [
-    file.fileName,
-    '--all-flashes'
-  ])
+  const stdout = await runGerberParser(file.content, [file.fileName, '--all-flashes'])
   const { pads } = JSON.parse(stdout) as { pads: MaskOpening[] }
   return pads.map(({ x, y }) => ({ x, y }))
 }

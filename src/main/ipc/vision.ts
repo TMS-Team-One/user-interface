@@ -1,17 +1,16 @@
 import { ipcMain } from 'electron'
-import { existsSync } from 'fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { BoardPose, LocalisationResult, PrinterPosition, Project } from '../../shared/types'
 import { requireProject, saveProjectPose } from '../db/projects.repository'
-import { runBackend } from '../backend'
+import { probeProcess } from '../services/probe-process'
 
 // The last localisation of each project, for the sync that follows it.
 const lastLocalisation = new Map<number, LocalisationResult>()
 
-// cad_features.load in the backend finds drill files by their M48 header and the
-// top solder mask by a .gts name, so the mask is written under a fixed name.
+// cad_features.load finds drill files by their M48 header and the top solder
+// mask by a .gts name, so the mask is written under a fixed name.
 async function locateBoard(
   project: Project,
   frame: ArrayBuffer,
@@ -29,18 +28,14 @@ async function locateBoard(
     }
     const image = join(dir, 'frame.jpg')
     await writeFile(image, Buffer.from(frame))
-    const args = ['scripts.locate_pcb', image, '--cad', cadDir]
-    if (outline.length > 0) {
-      await writeFile(join(dir, 'outline.json'), JSON.stringify(outline))
-      args.push('--outline', join(dir, 'outline.json'))
-    }
-    const { code, stderr } = await runBackend(args)
-    const resultPath = join(dir, 'frame_located.json')
-    if (!existsSync(resultPath)) {
-      throw new Error(stderr.trim() || `locate_pcb exited with code ${code}`)
-    }
-    const result = JSON.parse(await readFile(resultPath, 'utf8')) as LocalisationResult
-    const annotated = await readFile(join(dir, 'frame_located.jpg'))
+    const annotatedPath = join(dir, 'frame_located.jpg')
+    const result = await probeProcess.request<LocalisationResult>('locate_board', {
+      image,
+      cad_dir: cadDir,
+      outline: outline.length > 0 ? outline : null,
+      annotated: annotatedPath
+    })
+    const annotated = await readFile(annotatedPath)
     return { result, annotated: toArrayBuffer(annotated) }
   } finally {
     await rm(dir, { recursive: true, force: true })
@@ -69,14 +64,12 @@ export function registerVisionIpc(): void {
     (_event, projectId: number) => lastLocalisation.get(projectId) ?? null
   )
 
-  ipcMain.handle('vision:printerPosition', async (): Promise<PrinterPosition> => {
-    const { code, stdout, stderr } = await runBackend(['scripts.printer_position'])
-    if (code !== 0) throw new Error(stderr.trim() || 'printer position could not be read')
-    return JSON.parse(stdout) as PrinterPosition
-  })
+  ipcMain.handle('vision:printerPosition', (): Promise<PrinterPosition> =>
+    probeProcess.request<PrinterPosition>('position')
+  )
 
   // The probe stands on the given localised feature; the printer position there
-  // pins the board's origin down. See backend/src/vision/sync.py.
+  // pins the board's origin down. See src/main/vision/sync.py.
   ipcMain.handle(
     'vision:syncPose',
     async (
@@ -95,12 +88,7 @@ export function registerVisionIpc(): void {
         pad_board_xy: feature.board_xy,
         printer_xyz: [printer.x, printer.y, printer.z]
       }
-      const { code, stdout, stderr } = await runBackend(
-        ['scripts.sync_pose'],
-        JSON.stringify(request)
-      )
-      if (code !== 0) throw new Error(stderr.trim() || 'sync failed')
-      const pose = JSON.parse(stdout) as BoardPose
+      const pose = await probeProcess.request<BoardPose>('sync_pose', request)
       saveProjectPose(projectId, pose)
       return pose
     }

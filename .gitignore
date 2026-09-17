@@ -4,6 +4,13 @@ out
 .DS_Store
 .eslintcache
 *.log*
-src/main/parsing/files/
+.venv
+.idea
 .env
+.env.*
 __pycache__/
+*.py[cod]
+.python-build/
+resources/python/*/
+src/main/parsing/files/
+.pytest_cache/

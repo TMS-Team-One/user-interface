@@ -1,6 +1,6 @@
 ---
 name: arduino-firmware
-description: Write or change the firmware of ProbePilot's Arduino UNO R4 Minima voltage meter (ADS1115 over I2C, readings streamed over serial). Use for any request to write, edit or extend Arduino code in this repository; the firmware lives in backend/firmware. Flashing is the separate arduino-flash skill.
+description: Write or change the firmware of ProbePilot's Arduino UNO R4 Minima voltage meter (ADS1115 over I2C, readings streamed over serial). Use for any request to write, edit or extend Arduino code in this repository; the firmware lives in src/main/firmware. Flashing is the separate arduino-flash skill.
 ---
 
 # Writing firmware for the ProbePilot Arduino
@@ -12,19 +12,18 @@ executed only on the Arduino. Never run, emulate or "try out" sketch code on
 this computer, never port sketch logic into a host-side script to test it, and
 never execute anything the build produces. The only checks are a compile for the
 board (`arduino-cli compile`, see the arduino-flash skill) and, after flashing,
-reading the serial output through `python3 -m scripts.manual_voltage_test` run
-inside `backend/`.
+reading the serial output through `python3 src/scripts/manual_voltage_test.py`.
 
 ## Hardware
 
 - Board: Arduino UNO R4 Minima (`arduino:renesas_uno:minima`, USB 2341:0069).
 - Meter: ADS1115 16-bit ADC on I2C, library "Adafruit ADS1X15".
 - The probe signal goes through a 10 kΩ / 5.1 kΩ divider into CH0 and CH1; the
-  host scales the readings back (see `backend/src/measurement/instrument.py`).
+  host scales the readings back (see `src/main/measurement/instrument.py`).
 
 ## Serial contract with the host
 
-`backend/src/voltage_measurement/ads1115.py` parses the stream. Keep it exactly:
+`src/main/voltage_measurement/ads1115.py` parses the stream. Keep it exactly:
 
 - 115200 baud, one reading per line, channels scanned in order 0, 1, 2, 3:
   `Kanal <channel>: <raw> | <volts> V` (raw is the signed 16-bit ADC value,
@@ -36,8 +35,8 @@ inside `backend/`.
 
 ## Layout and style
 
-- One sketch per folder under `backend/firmware/`, folder and `.ino` file share a
-  name: `backend/firmware/ads1115_meter/ads1115_meter.ino` is the reference
+- One sketch per folder under `src/main/firmware/`, folder and `.ino` file share
+  a name: `src/main/firmware/ads1115_meter/ads1115_meter.ino` is the reference
   implementation.
 - Keep `loop()` short and non-blocking apart from the fixed cycle delay; no
   dynamic allocation, no `String` concatenation in the loop.

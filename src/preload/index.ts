@@ -3,13 +3,17 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type {
   BoardPose,
   BoardRender,
-  ChatReply,
-  ChatTurn,
+  ChatEventEnvelope,
+  ChatResult,
+  ChatSendRequest,
   FileClassification,
   GerberParseResult,
   LiveEvent,
   LocalisationResult,
+  ManualProbeCoordinates,
+  ManualProbeResult,
   PrinterPosition,
+  ProbeConnectionStatus,
   Project,
   ProjectFile,
   ProjectSummary
@@ -45,9 +49,27 @@ const api = {
       printer: PrinterPosition
     ): Promise<BoardPose> => ipcRenderer.invoke('vision:syncPose', projectId, featureId, printer)
   },
+  probe: {
+    connect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:connect'),
+    status: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:status'),
+    disconnect: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:disconnect'),
+    home: (): Promise<ProbeConnectionStatus> => ipcRenderer.invoke('probe:home'),
+    runManualTest: (coordinates: ManualProbeCoordinates): Promise<ManualProbeResult> =>
+      ipcRenderer.invoke('probe:runManualTest', coordinates)
+  },
   chat: {
-    send: (projectId: number, messages: ChatTurn[]): Promise<ChatReply> =>
-      ipcRenderer.invoke('chat:send', projectId, messages)
+    history: (projectId: number): Promise<ChatResult> =>
+      ipcRenderer.invoke('chat:history', projectId),
+    send: (request: ChatSendRequest): Promise<ChatResult> =>
+      ipcRenderer.invoke('chat:send', request),
+    onEvent: (listener: (envelope: ChatEventEnvelope) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, envelope: ChatEventEnvelope): void =>
+        listener(envelope)
+      ipcRenderer.on('chat:event', handler)
+      return () => {
+        ipcRenderer.removeListener('chat:event', handler)
+      }
+    }
   },
   parsing: {
     parsePads: (projectId: number): Promise<GerberParseResult> =>

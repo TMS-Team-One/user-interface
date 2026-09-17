@@ -23,29 +23,27 @@ arduino-cli lib install "Adafruit ADS1X15"
 ## Flashing
 
 Stop anything that holds the meter's serial port first (ProbePilot runs, the
-serial monitor). Then, from the repository's `backend/` folder:
+serial monitor). Then, from the repository root:
 
 ```bash
-cd backend
-python3 -m scripts.flash_firmware firmware/ads1115_meter
+python3 -m src.scripts.flash_firmware src/main/firmware/ads1115_meter
 ```
 
 The script compiles with `arduino-cli compile --fqbn arduino:renesas_uno:minima`,
-finds the board's port through `backend/src/serial_ports.py` (USB 2341:0069) and runs
+finds the board's port through `src/main/serial_ports.py` (USB 2341:0069) and runs
 `arduino-cli upload`. Pass `--port /dev/cu.usbmodemXXXX` when the discovery
 reports several boards, and `--fqbn` for another board.
 
 A compile-only check, for example while writing firmware:
 
 ```bash
-arduino-cli compile --fqbn arduino:renesas_uno:minima backend/firmware/ads1115_meter
+arduino-cli compile --fqbn arduino:renesas_uno:minima src/main/firmware/ads1115_meter
 ```
 
 ## Checking the result
 
 ```bash
-cd backend
-python3 -m scripts.manual_voltage_test
+python3 src/scripts/manual_voltage_test.py
 ```
 
 prints stabilised voltages when the meter streams correctly. For the raw lines:

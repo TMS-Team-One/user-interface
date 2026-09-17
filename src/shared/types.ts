@@ -112,7 +112,7 @@ export interface LocalisedFeature {
 }
 
 /**
- * What backend/scripts/locate_pcb.py reports for one image. When the
+ * What src/main/vision/locate_pcb.py reports for one image. When the
  * board was not found, `error` says why, `fit` is null and only `detected`,
  * the circles the detector saw, is filled.
  */
@@ -140,14 +140,63 @@ export interface PrinterPosition {
   z: number
 }
 
-export interface ChatTurn {
+export interface ProbeConnectionStatus {
+  connected: boolean
+  homed: boolean
+}
+
+export interface ManualProbeCoordinates {
+  x: number
+  y: number
+  z: number
+}
+
+export interface ManualProbeResult {
+  target: ManualProbeCoordinates
+  voltage: number
+  unit: 'V'
+  retracted: boolean
+}
+
+export interface ChatMessageItem {
+  type: 'message'
+  id: string
   role: 'user' | 'assistant'
   content: string
 }
 
-export interface ChatReply {
-  text: string
-  tools: string[]
-  /** Why there is no answer, e.g. a missing API key. */
-  error: string | null
+export interface ChatToolItem {
+  type: 'tool'
+  id: string
+  name: string
+  args: Record<string, unknown>
+  status: 'running' | 'success' | 'error'
+  result?: unknown
+  error?: string
+}
+
+export type ChatTimelineItem = ChatMessageItem | ChatToolItem
+
+export type ChatEvent =
+  | { type: 'thinking'; message: string }
+  | { type: 'assistant-delta'; content: string }
+  | { type: 'assistant-completed'; item: ChatMessageItem }
+  | { type: 'tool-started'; item: ChatToolItem }
+  | { type: 'tool-completed'; item: ChatToolItem }
+  | { type: 'tool-failed'; item: ChatToolItem }
+
+export interface ChatEventEnvelope {
+  runId: string
+  projectId: number
+  event: ChatEvent
+}
+
+export interface ChatSendRequest {
+  runId: string
+  projectId: number
+  message: string
+}
+
+export interface ChatResult {
+  items: ChatTimelineItem[]
 }

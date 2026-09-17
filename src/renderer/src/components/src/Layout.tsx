@@ -7,7 +7,7 @@ interface LayoutProps {
   title?: React.ReactNode
 }
 
-const Layout = ({ children, action, title }: LayoutProps) => {
+const Layout = ({ children, action, title }: LayoutProps): React.JSX.Element => {
   return (
     <>
       <div className="flex flex-row items-center justify-between gap-4 w-full">

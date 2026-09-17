@@ -1,8 +1,10 @@
 import type { ProjectSummary } from '@shared/types'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { Box, Cpu, Logs as LogsIcon, Radio } from 'lucide-react'
+import { Box, Cpu, Logs as LogsIcon, MessageSquare, PanelRightClose, Radio } from 'lucide-react'
 import { useLiveRun } from '@/hooks/use-live-run'
+import { useState } from 'react'
 import Board3D from './Board3D'
 import ChatPanel from './ChatPanel'
 import CircuitView from './CircuitView'
@@ -10,10 +12,12 @@ import Layout from './Layout'
 import LiveView from './LiveView'
 import Logs from './Logs'
 
-// Every tab shows its detail view on top and the project's chat below. The test
-// run's state lives here because tab contents unmount when another tab is shown.
+// Every tab shows its detail view; the project's chat sits to the right of it
+// and can be hidden. The test run's state lives here because tab contents
+// unmount when another tab is shown.
 const ProjectView = ({ project }: { project: ProjectSummary }): React.JSX.Element => {
   const run = useLiveRun()
+  const [chatOpen, setChatOpen] = useState(true)
   return (
     <Layout
       title={
@@ -22,9 +26,20 @@ const ProjectView = ({ project }: { project: ProjectSummary }): React.JSX.Elemen
           <span className="truncate font-semibold">{project.name}</span>
         </span>
       }
+      action={
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={chatOpen ? 'Hide chat' : 'Show chat'}
+          title={chatOpen ? 'Hide chat' : 'Show chat'}
+          onClick={() => setChatOpen((open) => !open)}
+        >
+          {chatOpen ? <PanelRightClose /> : <MessageSquare />}
+        </Button>
+      }
     >
-      <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-        <ResizablePanel defaultSize={70} minSize={30}>
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+        <ResizablePanel defaultSize={68} minSize={40}>
           <Tabs defaultValue="circuit" className="flex h-full min-h-0 flex-col">
             <TabsList>
               <TabsTrigger value="circuit">
@@ -62,12 +77,16 @@ const ProjectView = ({ project }: { project: ProjectSummary }): React.JSX.Elemen
             </TabsContent>
           </Tabs>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={30} minSize={15}>
-          <div className="h-full p-2">
-            <ChatPanel key={project.id} project={project} />
-          </div>
-        </ResizablePanel>
+        {chatOpen && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={32} minSize={20}>
+              <div className="h-full p-2">
+                <ChatPanel key={project.id} project={project} />
+              </div>
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
     </Layout>
   )

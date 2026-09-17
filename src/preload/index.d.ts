@@ -2,13 +2,17 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   BoardPose,
   BoardRender,
-  ChatReply,
-  ChatTurn,
+  ChatEventEnvelope,
+  ChatResult,
+  ChatSendRequest,
   FileClassification,
   GerberParseResult,
   LiveEvent,
   LocalisationResult,
+  ManualProbeCoordinates,
+  ManualProbeResult,
   PrinterPosition,
+  ProbeConnectionStatus,
   Project,
   ProjectFile,
   ProjectSummary
@@ -35,8 +39,18 @@ export interface VisionApi {
   syncPose: (projectId: number, featureId: number, printer: PrinterPosition) => Promise<BoardPose>
 }
 
+export interface ProbeApi {
+  connect: () => Promise<ProbeConnectionStatus>
+  status: () => Promise<ProbeConnectionStatus>
+  disconnect: () => Promise<ProbeConnectionStatus>
+  home: () => Promise<ProbeConnectionStatus>
+  runManualTest: (coordinates: ManualProbeCoordinates) => Promise<ManualProbeResult>
+}
+
 export interface ChatApi {
-  send: (projectId: number, messages: ChatTurn[]) => Promise<ChatReply>
+  history: (projectId: number) => Promise<ChatResult>
+  send: (request: ChatSendRequest) => Promise<ChatResult>
+  onEvent: (listener: (envelope: ChatEventEnvelope) => void) => () => void
 }
 
 export interface ParsingApi {
@@ -60,6 +74,7 @@ declare global {
       parsing: ParsingApi
       live: LiveApi
       vision: VisionApi
+      probe: ProbeApi
       chat: ChatApi
     }
   }

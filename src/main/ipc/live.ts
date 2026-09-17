@@ -1,17 +1,17 @@
 import { ipcMain } from 'electron'
-import { spawn, type ChildProcess } from 'child_process'
-import { createInterface } from 'readline'
 import type { LiveEvent, RunTarget } from '../../shared/types'
 import { getProjectPose, requireProject } from '../db/projects.repository'
 import { collectPads } from '../parsing/pads'
-import { BACKEND_DIR, PYTHON_EXECUTABLE } from '../backend'
+import { probeProcess } from '../services/probe-process'
 
 // Where the board lies on the bed until the camera sync supplies its pose.
 const DEFAULT_POSE = { x: 60, y: 60, z_contact: 12, rotation_deg: 0 }
 const SAFE_HEIGHT_MM = 8
 // A simulated head runs this much faster than the real one would.
-const SIMULATION_TIME_SCALE = '0.1'
+const SIMULATION_TIME_SCALE = 0.1
 const MM_PER_INCH = 25.4
+// The bridge answers when the run is over; a real head needs seconds per pad.
+const RUN_TIMEOUT_MS = 60 * 60_000
 
 export interface RunRecord {
   backend: string
@@ -22,15 +22,11 @@ export interface RunRecord {
 /** The last test run of each project, for the chat agent. */
 export const lastRuns = new Map<number, RunRecord>()
 
-let runner: ChildProcess | null = null
-
 export function registerLiveIpc(): void {
-  // Sends the project's testable pads to the backend runner and streams its
-  // events back to the window that asked. Returns the number of pads it visits.
+  // Sends the project's testable pads to the hardware bridge as one probing job
+  // and streams the runner's events back to the window that asked. Returns the
+  // number of pads it visits.
   ipcMain.handle('live:start', async (event, projectId: number): Promise<number> => {
-    // A superseded runner is killed quietly; only the current one reports its end.
-    runner?.kill()
-    runner = null
     const pads = await collectPads(requireProject(projectId))
     const targets: RunTarget[] = pads
       .filter((pad) => pad.testable)
@@ -56,34 +52,26 @@ export function registerLiveIpc(): void {
       if (!event.sender.isDestroyed()) event.sender.send('live:event', liveEvent)
     }
 
-    const child = spawn(
-      PYTHON_EXECUTABLE,
-      ['-m', 'scripts.run_test', '--time-scale', SIMULATION_TIME_SCALE],
-      { cwd: BACKEND_DIR }
-    )
-    runner = child
-    createInterface({ input: child.stdout }).on('line', (line) => {
-      try {
-        send(JSON.parse(line))
-      } catch {
-        console.error('backend runner said:', line)
-      }
-    })
-    child.stderr.on('data', (chunk) => console.error('backend runner:', String(chunk)))
-    child.on('error', (error) => send({ type: 'error', message: String(error) }))
-    child.on('close', (code) => {
-      if (runner !== child) return
-      runner = null
-      if (code) send({ type: 'error', message: `backend runner exited with code ${code}` })
-      send({ type: 'finished' })
-    })
-    const pose = getProjectPose(projectId) ?? DEFAULT_POSE
-    child.stdin.end(JSON.stringify({ targets, pose, safe_height: SAFE_HEIGHT_MM }))
+    const job = {
+      targets,
+      pose: getProjectPose(projectId) ?? DEFAULT_POSE,
+      safe_height: SAFE_HEIGHT_MM,
+      time_scale: SIMULATION_TIME_SCALE
+    }
+    probeProcess
+      .request('run_test', job, {
+        timeoutMs: RUN_TIMEOUT_MS,
+        onEvent: (liveEvent) => send(liveEvent as LiveEvent)
+      })
+      .catch((error: Error) => {
+        send({ type: 'error', message: error.message })
+        send({ type: 'finished' })
+      })
     return targets.length
   })
 
-  ipcMain.handle('live:stop', () => {
-    runner?.kill()
+  ipcMain.handle('live:stop', async () => {
+    await probeProcess.request('stop_run')
   })
 
   // WHEP signalling for the camera stream: the offer goes to <stream url>/whep,
