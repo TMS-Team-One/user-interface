@@ -25,7 +25,16 @@ import type {
   ChatToolItem,
   TestSummary
 } from '@shared/types'
-import { Bot, Check, ChevronRight, CircleAlert, CornerDownLeft, Sparkles } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Bot,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CornerDownLeft,
+  Search,
+  Sparkles
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 function ChatPanel({ testCase }: { testCase: TestSummary }): React.JSX.Element {
@@ -121,12 +130,12 @@ function ChatPanel({ testCase }: { testCase: TestSummary }): React.JSX.Element {
                 </div>
               ) : null}
 
-              {items.map((item) => (
-                <MessageScrollerItem key={item.id}>
-                  {item.type === 'message' ? (
-                    <ChatMessage item={item} />
+              {groupTimelineItems(items).map((group) => (
+                <MessageScrollerItem key={group.id}>
+                  {group.type === 'message' ? (
+                    <ChatMessage item={group.item} />
                   ) : (
-                    <ToolActivity item={item} />
+                    <ToolActivityGroup items={group.items} />
                   )}
                 </MessageScrollerItem>
               ))}
@@ -217,7 +226,27 @@ function ChatMessage({ item }: { item: ChatMessageItem }): React.JSX.Element {
   )
 }
 
+function ToolActivityGroup({ items }: { items: ChatToolItem[] }): React.JSX.Element {
+  const running = items.some((item) => item.status === 'running')
+  const actionLabel = `${items.length} ${items.length === 1 ? 'action' : 'actions'}`
+
+  return (
+    <div className="ml-1 max-w-3xl border-l border-border/80 py-0.5 pl-4">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <Sparkles className="size-3.5" aria-hidden="true" />
+        <span>{running ? `Using ${actionLabel}…` : `Used ${actionLabel}`}</span>
+      </div>
+      <div className="space-y-1">
+        {items.map((item) => (
+          <ToolActivity key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
+  const ToolIcon = item.name === 'measure_voltage' ? Search : ArrowUpRight
   const icon =
     item.status === 'running' ? (
       <Spinner className="size-3.5" />
@@ -230,32 +259,64 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
   const hasDetails = Object.keys(item.args).length > 0 || item.result !== undefined
 
   return (
-    <div className="flex max-w-3xl items-start gap-2 py-1 text-sm">
-      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center" aria-hidden="true">
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className={item.status === 'error' ? 'font-medium' : 'text-muted-foreground'}>
-            {toolLabel(item.name, item.status)}
-          </span>
-          {context && <span className="text-xs text-muted-foreground/80">{context}</span>}
+    <div className="min-w-0 py-0.5 text-sm">
+      <div className="flex min-w-0 items-start gap-1.5">
+        <ToolIcon
+          className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground ${
+            item.name === 'measure_voltage' ? 'rotate-90' : ''
+          }`}
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className={item.status === 'error' ? 'font-medium' : 'text-muted-foreground'}>
+              {toolLabel(item.name, item.status)}
+            </span>
+            {context && <span className="text-xs text-muted-foreground/80">{context}</span>}
+          </div>
+          {item.error && <p className="mt-0.5 text-xs text-destructive">{item.error}</p>}
+          {hasDetails && (
+            <details className="group/details mt-0.5 text-xs text-muted-foreground">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-0.5 select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="size-3 transition-transform group-open/details:rotate-90" />
+                Details
+              </summary>
+              <pre className="mt-1.5 overflow-auto whitespace-pre-wrap border-l pl-3 font-mono text-[11px] leading-relaxed">
+                {JSON.stringify({ input: item.args, result: item.result }, null, 2)}
+              </pre>
+            </details>
+          )}
         </div>
-        {item.error && <p className="mt-0.5 text-sm text-destructive">{item.error}</p>}
-        {hasDetails && (
-          <details className="group/details mt-1 text-xs text-muted-foreground">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-0.5 select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
-              <ChevronRight className="size-3 transition-transform group-open/details:rotate-90" />
-              Details
-            </summary>
-            <pre className="mt-2 overflow-auto whitespace-pre-wrap border-l pl-3 font-mono text-[11px] leading-relaxed">
-              {JSON.stringify({ input: item.args, result: item.result }, null, 2)}
-            </pre>
-          </details>
-        )}
+        <span
+          className="mt-0.5 flex size-4 shrink-0 items-center justify-center"
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
       </div>
     </div>
   )
+}
+
+type TimelineGroup =
+  | { type: 'message'; id: string; item: ChatMessageItem }
+  | { type: 'tools'; id: string; items: ChatToolItem[] }
+
+function groupTimelineItems(items: ChatTimelineItem[]): TimelineGroup[] {
+  return items.reduce<TimelineGroup[]>((groups, item) => {
+    if (item.type === 'message') {
+      groups.push({ type: 'message', id: item.id, item })
+      return groups
+    }
+
+    const previous = groups.at(-1)
+    if (previous?.type === 'tools') {
+      previous.items.push(item)
+    } else {
+      groups.push({ type: 'tools', id: `tools-${item.id}`, items: [item] })
+    }
+    return groups
+  }, [])
 }
 
 function applyEvent(
