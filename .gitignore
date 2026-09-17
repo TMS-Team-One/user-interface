@@ -12,3 +12,4 @@ __pycache__/
 *.py[cod]
 .python-build/
 resources/python/*/
+src/main/parsing/files/

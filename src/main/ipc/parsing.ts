@@ -16,7 +16,7 @@ function renderGerberSvg(gerberFileContent: string, id: string): Promise<string>
   })
 }
 
-function runGerberParser(stdinInput: string): Promise<string> {
+function runGerberParser(stdinInput: string, args: string[] = []): Promise<string> {
   return new Promise((resolve, reject) => {
     let parserCommand
     try {
@@ -26,7 +26,7 @@ function runGerberParser(stdinInput: string): Promise<string> {
       return
     }
 
-    const py = spawn(parserCommand.command, parserCommand.args, {
+    const py = spawn(parserCommand.command, [...parserCommand.args, ...args], {
       cwd: parserCommand.cwd,
       windowsHide: true
     })
@@ -56,7 +56,7 @@ export function registerParsingIpc(): void {
       throw new Error(`No test found with id ${testId}`)
     }
 
-    const stdout = await runGerberParser(test.gerberFileContent)
+    const stdout = await runGerberParser(test.gerberFileContent, [test.fileName])
     return JSON.parse(stdout)
   })
 

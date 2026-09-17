@@ -1,12 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
-  ManualProbeCoordinates,
-  ManualProbeResult,
   ChatEventEnvelope,
   ChatResult,
   ChatSendRequest,
-  ParsedPad,
+  GerberParseResult,
+  ManualProbeCoordinates,
+  ManualProbeResult,
   ProbeConnectionStatus,
   Test,
   TestSummary
@@ -18,11 +18,12 @@ const api = {
     create: (testName: string, fileName: string, gerberFileContent: string): Promise<Test> =>
       ipcRenderer.invoke('tests:create', testName, fileName, gerberFileContent),
     delete: (id: number): Promise<boolean> => ipcRenderer.invoke('tests:delete', id),
+    deleteMany: (ids: number[]): Promise<number> => ipcRenderer.invoke('tests:deleteMany', ids),
     getById: (id: number): Promise<Test | undefined> => ipcRenderer.invoke('tests:getById', id),
     list: (): Promise<TestSummary[]> => ipcRenderer.invoke('tests:list')
   },
   parsing: {
-    parseGerber: (testId: number): Promise<ParsedPad[]> =>
+    parseGerber: (testId: number): Promise<GerberParseResult> =>
       ipcRenderer.invoke('parsing:parseGerber', testId),
     renderGerberSvg: (testId: number): Promise<string> =>
       ipcRenderer.invoke('parsing:renderGerberSvg', testId)

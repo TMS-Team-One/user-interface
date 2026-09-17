@@ -18,6 +18,23 @@ export interface ParsedPad {
   aperture_params: string | null
   aperture_function: string | null
   net_name: string | null
+  x_size: number | null
+  y_size: number | null
+}
+
+export interface BoardBounds {
+  min_x: number
+  min_y: number
+  max_x: number
+  max_y: number
+  x_size: number
+  y_size: number
+  unit: string
+}
+
+export interface GerberParseResult {
+  pads: ParsedPad[]
+  bounds: BoardBounds | null
 }
 
 export interface ProbeConnectionStatus {

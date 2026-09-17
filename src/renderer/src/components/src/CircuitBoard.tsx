@@ -1,9 +1,9 @@
-import type { ParsedPad, TestSummary } from '@shared/types'
+import type { GerberParseResult, TestSummary } from '@shared/types'
 import { useEffect, useState } from 'react'
 import GerberViewer from './GerberViewer'
 
 const CircuitBoardContent = ({ testCase }: { testCase: TestSummary }): React.JSX.Element => {
-  const [pads, setPads] = useState<ParsedPad[] | null>(null)
+  const [result, setResult] = useState<GerberParseResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -11,8 +11,8 @@ const CircuitBoardContent = ({ testCase }: { testCase: TestSummary }): React.JSX
 
     window.api.parsing
       .parseGerber(testCase.id)
-      .then((parsedPads) => {
-        if (!cancelled) setPads(parsedPads)
+      .then((parsedResult) => {
+        if (!cancelled) setResult(parsedResult)
       })
       .catch((err) => {
         if (!cancelled) setError(String(err))
@@ -24,13 +24,22 @@ const CircuitBoardContent = ({ testCase }: { testCase: TestSummary }): React.JSX
   }, [testCase.id])
 
   return (
-    <div className="flex flex-1 flex-col gap-2 overflow-hidden">
-      <GerberViewer testCase={testCase} />
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+      <GerberViewer
+        testCase={testCase}
+        pads={result?.pads ?? null}
+        bounds={result?.bounds ?? null}
+      />
       <div className="shrink-0 text-xs text-muted-foreground" role="status">
         {error ? (
           <span className="text-destructive">Could not parse probe candidates: {error}</span>
-        ) : pads ? (
-          <span>{pads.length} probe candidates found</span>
+        ) : result ? (
+          <span>
+            {result.pads.length} probe candidates found
+            {result.bounds
+              ? ` · Board size: ${result.bounds.x_size.toFixed(3)} × ${result.bounds.y_size.toFixed(3)} ${result.bounds.unit}`
+              : ''}
+          </span>
         ) : (
           <span>Finding probe candidates…</span>
         )}

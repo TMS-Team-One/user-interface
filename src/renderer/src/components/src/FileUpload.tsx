@@ -21,7 +21,38 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const isGerberFile = (file: File): boolean => file.name.toLowerCase().endsWith('.gbr')
+const GERBER_FILE_EXTENSIONS = new Set([
+  'gbr',
+  'gtl',
+  'gbl',
+  'gts',
+  'gbs',
+  'gtp',
+  'gbp',
+  'gm1',
+  'gm2',
+  'gm3',
+  'gm4',
+  'gm6',
+  'gm8',
+  'gm10',
+  'gm13',
+  'gm15',
+  'gd1',
+  'gg1',
+  'apr',
+  'apr_lib',
+  'rep',
+  'extrep',
+  'rul'
+])
+
+const isGerberFile = (file: File): boolean => {
+  const name = file.name.toLowerCase()
+  const lastDot = name.lastIndexOf('.')
+  if (lastDot <= 0) return false
+  return GERBER_FILE_EXTENSIONS.has(name.slice(lastDot + 1))
+}
 
 function stripExtension(fileName: string): string {
   const lastDot = fileName.lastIndexOf('.')
@@ -42,7 +73,7 @@ export function FileUpload({
 
   const acceptFile = (candidate: File): void => {
     if (!isGerberFile(candidate)) {
-      setError('Only .gbr files are supported')
+      setError('Only Gerber layer files are supported')
       return
     }
     setError(null)
@@ -147,12 +178,12 @@ export function FileUpload({
                   <p className="text-sm font-medium">
                     <span className="text-primary">Click to upload</span> or drag and drop
                   </p>
-                  <p className="text-xs text-muted-foreground">Gerber file (.gbr) only</p>
+                  <p className="text-xs text-muted-foreground">Gerber layer files only</p>
                 </div>
                 <Input
                   id="file-upload"
                   type="file"
-                  accept=".gbr"
+                  accept=".gbr,.gtl,.gbl,.gts,.gbs,.gtp,.gbp,.gm1,.gm2,.gm3,.gm4,.gm6,.gm8,.gm10,.gm13,.gm15,.gd1,.gg1,.apr,.apr_lib,.rep,.extrep,.rul"
                   className="hidden"
                   onChange={handleFileChange}
                 />

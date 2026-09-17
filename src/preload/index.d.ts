@@ -1,11 +1,11 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
-  ManualProbeCoordinates,
-  ManualProbeResult,
   ChatEventEnvelope,
   ChatResult,
   ChatSendRequest,
-  ParsedPad,
+  GerberParseResult,
+  ManualProbeCoordinates,
+  ManualProbeResult,
   ProbeConnectionStatus,
   Test,
   TestSummary
@@ -14,12 +14,13 @@ import type {
 export interface TestsApi {
   create: (testName: string, fileName: string, gerberFileContent: string) => Promise<Test>
   delete: (id: number) => Promise<boolean>
+  deleteMany: (ids: number[]) => Promise<number>
   getById: (id: number) => Promise<Test | undefined>
   list: () => Promise<TestSummary[]>
 }
 
 export interface ParsingApi {
-  parseGerber: (testId: number) => Promise<ParsedPad[]>
+  parseGerber: (testId: number) => Promise<GerberParseResult>
   renderGerberSvg: (testId: number) => Promise<string>
 }
 

@@ -1,4 +1,4 @@
-import type { TestSummary } from '@shared/types'
+import type { BoardBounds, ParsedPad, TestSummary } from '@shared/types'
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Minus, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,72 @@ const MAX_SCALE = 8
 const INITIAL_VIEW = { scale: 1, x: 0, y: 0 }
 const toPercentString = (scale: number): string => String(Math.round(scale * 100))
 
-const GerberViewerContent = ({ testCase }: { testCase: TestSummary }): React.JSX.Element => {
+// Radius of a pad marker, relative to the board's own viewBox size, so it
+// stays a sensible size regardless of the file's units/scale.
+const PAD_MARKER_RADIUS_RATIO = 0.006
+const PAD_MARKER_COLOR = '#f97316'
+
+// Places a marker for each pad directly inside the rendered SVG's own
+// viewBox. `bounds` is the same file's full-geometry bounding box (traces,
+// outline, everything) computed by the Python parser -- the board render
+// (gerber-to-svg) sizes its viewBox to that same extent, so mapping one
+// bounding box onto the other lines pads up with the artwork without either
+// side needing to agree on units or on gerber-to-svg's internal scaling.
+function drawPadOverlay(svgEl: SVGSVGElement, pads: ParsedPad[], bounds: BoardBounds): void {
+  const viewBox = svgEl.viewBox.baseVal
+  const boardWidth = bounds.x_size
+  const boardHeight = bounds.y_size
+  if (
+    !viewBox ||
+    viewBox.width <= 0 ||
+    viewBox.height <= 0 ||
+    boardWidth <= 0 ||
+    boardHeight <= 0
+  ) {
+    return
+  }
+
+  const scaleX = viewBox.width / boardWidth
+  const scaleY = viewBox.height / boardHeight
+  const radius = Math.min(viewBox.width, viewBox.height) * PAD_MARKER_RADIUS_RATIO
+
+  const svgNs = 'http://www.w3.org/2000/svg'
+  const group = document.createElementNS(svgNs, 'g')
+  group.setAttribute('data-pad-overlay', 'true')
+
+  for (const pad of pads) {
+    const cx = viewBox.x + (pad.x - bounds.min_x) * scaleX
+    // SVG y grows downward while Gerber y grows upward, so flip against the
+    // board's own vertical extent instead of assuming any fixed origin.
+    const cy = viewBox.y + (bounds.max_y - pad.y) * scaleY
+
+    const circle = document.createElementNS(svgNs, 'circle')
+    circle.setAttribute('cx', String(cx))
+    circle.setAttribute('cy', String(cy))
+    circle.setAttribute('r', String(radius))
+    circle.setAttribute('fill', PAD_MARKER_COLOR)
+    circle.setAttribute('fill-opacity', '0.7')
+    circle.setAttribute('stroke', PAD_MARKER_COLOR)
+    circle.setAttribute('stroke-width', String(radius * 0.2))
+
+    const label = pad.net_name ?? pad.aperture_function ?? 'pad'
+    const title = document.createElementNS(svgNs, 'title')
+    title.textContent = `${label} (${pad.x.toFixed(3)}, ${pad.y.toFixed(3)} ${pad.unit})`
+    circle.appendChild(title)
+
+    group.appendChild(circle)
+  }
+
+  svgEl.appendChild(group)
+}
+
+interface GerberViewerProps {
+  testCase: TestSummary
+  pads: ParsedPad[] | null
+  bounds: BoardBounds | null
+}
+
+const GerberViewerContent = ({ testCase, pads, bounds }: GerberViewerProps): React.JSX.Element => {
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState(INITIAL_VIEW)
@@ -42,15 +107,19 @@ const GerberViewerContent = ({ testCase }: { testCase: TestSummary }): React.JSX
     if (!containerRef.current || svg === null) return
 
     containerRef.current.innerHTML = svg
-    const svgEl = containerRef.current.querySelector('svg')
+    const svgEl = containerRef.current.querySelector<SVGSVGElement>('svg')
     if (svgEl) {
       svgEl.removeAttribute('width')
       svgEl.removeAttribute('height')
       svgEl.style.width = '100%'
       svgEl.style.height = '100%'
       svgEl.style.display = 'block'
+
+      if (pads && pads.length > 0 && bounds) {
+        drawPadOverlay(svgEl, pads, bounds)
+      }
     }
-  }, [svg])
+  }, [svg, pads, bounds])
 
   const setScale = (scale: number): void => {
     const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
@@ -173,8 +242,8 @@ const GerberViewerContent = ({ testCase }: { testCase: TestSummary }): React.JSX
   )
 }
 
-const GerberViewer = ({ testCase }: { testCase: TestSummary }): React.JSX.Element => (
-  <GerberViewerContent key={testCase.id} testCase={testCase} />
+const GerberViewer = (props: GerberViewerProps): React.JSX.Element => (
+  <GerberViewerContent key={props.testCase.id} {...props} />
 )
 
 export default GerberViewer

@@ -29,12 +29,12 @@ const TestCase = ({ testCase }: { testCase: TestSummary }): React.JSX.Element =>
             Chat
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="circuit-board" className="flex flex-1">
+        <TabsContent value="circuit-board" className="flex min-h-0 flex-1">
           <div className="w-full h-full p-2">
             <CircuitBoard testCase={testCase} />
           </div>
         </TabsContent>
-        <TabsContent value="logs" className="flex flex-1">
+        <TabsContent value="logs" className="flex min-h-0 flex-1">
           <div className="w-full h-full p-2">
             <Logs testCase={testCase} />
           </div>
