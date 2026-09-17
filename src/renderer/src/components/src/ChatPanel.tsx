@@ -32,6 +32,7 @@ import {
   ChevronRight,
   CircleAlert,
   CornerDownLeft,
+  File,
   FileSearch,
   Search,
   Sparkles
@@ -258,9 +259,11 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
   const ToolIcon =
     item.name === 'measure_voltage'
       ? Search
-      : PROJECT_TOOLS.has(item.name)
-        ? FileSearch
-        : ArrowUpRight
+      : FILE_TOOLS.has(item.name)
+        ? File
+        : PROJECT_TOOLS.has(item.name)
+          ? FileSearch
+          : ArrowUpRight
   const icon =
     item.status === 'running' ? (
       <Spinner className="size-3.5" />
@@ -313,6 +316,7 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
 }
 
 const PROJECT_TOOLS = new Set(['get_project_summary', 'list_testable_pads', 'get_last_run'])
+const FILE_TOOLS = new Set(['list_files', 'read_file'])
 
 type TimelineGroup =
   | { type: 'message'; id: string; item: ChatMessageItem }

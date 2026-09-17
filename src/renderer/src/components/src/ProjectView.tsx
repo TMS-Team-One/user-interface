@@ -21,15 +21,18 @@ const ProjectView = ({ project }: { project: ProjectSummary }): React.JSX.Elemen
   return (
     <Layout
       title={
-        <span className="flex items-baseline gap-1.5 truncate">
-          <span className="text-muted-foreground font-normal">Project</span>
-          <span className="truncate font-semibold">{project.name}</span>
+        <span className="flex min-w-0 items-center gap-2.5 truncate">
+          <span className="rounded-md bg-muted/70 px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+            Project
+          </span>
+          <span className="truncate font-semibold tracking-tight">{project.name}</span>
         </span>
       }
       action={
         <Button
           variant="ghost"
           size="icon-sm"
+          className="rounded-lg border border-border/70 bg-background/60 shadow-xs hover:bg-muted"
           aria-label={chatOpen ? 'Hide chat' : 'Show chat'}
           title={chatOpen ? 'Hide chat' : 'Show chat'}
           onClick={() => setChatOpen((open) => !open)}
@@ -41,18 +44,34 @@ const ProjectView = ({ project }: { project: ProjectSummary }): React.JSX.Elemen
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         <ResizablePanel defaultSize={68} minSize={40}>
           <Tabs defaultValue="circuit" className="flex h-full min-h-0 flex-col">
-            <TabsList>
-              <TabsTrigger value="circuit">
-                <Cpu></Cpu>Circuit View
+            <TabsList className="mx-2 h-11 max-w-[calc(100%-1rem)] justify-start gap-1 overflow-x-auto rounded-xl border border-border/70 bg-muted/45 p-1 shadow-xs">
+              <TabsTrigger
+                value="circuit"
+                className="h-8 flex-none rounded-lg px-3 text-[13px] tracking-normal hover:bg-background/60 data-[state=active]:shadow-sm data-[state=active]:[&_svg]:text-primary"
+              >
+                <Cpu />
+                Circuit View
               </TabsTrigger>
-              <TabsTrigger value="board-3d">
-                <Box></Box>3D View
+              <TabsTrigger
+                value="board-3d"
+                className="h-8 flex-none rounded-lg px-3 text-[13px] tracking-normal hover:bg-background/60 data-[state=active]:shadow-sm data-[state=active]:[&_svg]:text-primary"
+              >
+                <Box />
+                3D View
               </TabsTrigger>
-              <TabsTrigger value="testing">
-                <LogsIcon></LogsIcon>Testing
+              <TabsTrigger
+                value="testing"
+                className="h-8 flex-none rounded-lg px-3 text-[13px] tracking-normal hover:bg-background/60 data-[state=active]:shadow-sm data-[state=active]:[&_svg]:text-primary"
+              >
+                <LogsIcon />
+                Testing
               </TabsTrigger>
-              <TabsTrigger value="live">
-                <Radio></Radio>Live View
+              <TabsTrigger
+                value="live"
+                className="h-8 flex-none rounded-lg px-3 text-[13px] tracking-normal hover:bg-background/60 data-[state=active]:shadow-sm data-[state=active]:[&_svg]:text-primary"
+              >
+                <Radio />
+                Live View
               </TabsTrigger>
             </TabsList>
             <TabsContent value="circuit" className="flex min-h-0 flex-1">
