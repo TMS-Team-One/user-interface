@@ -5,12 +5,12 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import type { BoardPose, LocalisationResult, PrinterPosition, Project } from '../../shared/types'
 import { requireProject, saveProjectPose } from '../db/projects.repository'
-import { runProbePilot } from '../probe-pilot'
+import { runBackend } from '../backend'
 
 // The last localisation of each project, for the sync that follows it.
 const lastLocalisation = new Map<number, LocalisationResult>()
 
-// cad_features.load in probe-pilot finds drill files by their M48 header and the
+// cad_features.load in the backend finds drill files by their M48 header and the
 // top solder mask by a .gts name, so the mask is written under a fixed name.
 async function locateBoard(
   project: Project,
@@ -34,7 +34,7 @@ async function locateBoard(
       await writeFile(join(dir, 'outline.json'), JSON.stringify(outline))
       args.push('--outline', join(dir, 'outline.json'))
     }
-    const { code, stderr } = await runProbePilot(args)
+    const { code, stderr } = await runBackend(args)
     const resultPath = join(dir, 'frame_located.json')
     if (!existsSync(resultPath)) {
       throw new Error(stderr.trim() || `locate_pcb exited with code ${code}`)
@@ -70,13 +70,13 @@ export function registerVisionIpc(): void {
   )
 
   ipcMain.handle('vision:printerPosition', async (): Promise<PrinterPosition> => {
-    const { code, stdout, stderr } = await runProbePilot(['scripts.printer_position'])
+    const { code, stdout, stderr } = await runBackend(['scripts.printer_position'])
     if (code !== 0) throw new Error(stderr.trim() || 'printer position could not be read')
     return JSON.parse(stdout) as PrinterPosition
   })
 
   // The probe stands on the given localised feature; the printer position there
-  // pins the board's origin down. See src/vision/sync.py in probe-pilot.
+  // pins the board's origin down. See backend/src/vision/sync.py.
   ipcMain.handle(
     'vision:syncPose',
     async (
@@ -95,7 +95,7 @@ export function registerVisionIpc(): void {
         pad_board_xy: feature.board_xy,
         printer_xyz: [printer.x, printer.y, printer.z]
       }
-      const { code, stdout, stderr } = await runProbePilot(
+      const { code, stdout, stderr } = await runBackend(
         ['scripts.sync_pose'],
         JSON.stringify(request)
       )

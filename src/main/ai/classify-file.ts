@@ -4,9 +4,9 @@ import OpenAI from 'openai'
 import { zodTextFormat } from 'openai/helpers/zod'
 import { z } from 'zod'
 import type { FileClassification } from '../../shared/types'
-import { PROBE_PILOT_DIR } from '../probe-pilot'
+import { BACKEND_DIR } from '../backend'
 
-// The same model probe-pilot's agent uses by default.
+// The same model the backend's agent uses by default.
 const MODEL = 'gpt-4o-mini'
 
 const Classification = z.object({
@@ -22,11 +22,11 @@ const INSTRUCTIONS =
   'Decide what the file is from its name and first lines. layerType and layerSide only ' +
   'apply to Gerber layers; use null otherwise. Answer "unknown" when unsure.'
 
-// The key from the environment, or from probe-pilot's .env where the agent keeps it.
+// The key from the environment, or from backend/.env where the agent keeps it.
 function openAiApiKey(): string | null {
   if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY
   try {
-    const match = /^OPENAI_API_KEY=(.+)$/m.exec(readFileSync(join(PROBE_PILOT_DIR, '.env'), 'utf8'))
+    const match = /^OPENAI_API_KEY=(.+)$/m.exec(readFileSync(join(BACKEND_DIR, '.env'), 'utf8'))
     return match ? match[1].trim().replace(/^["']|["']$/g, '') : null
   } catch {
     return null

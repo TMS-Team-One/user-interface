@@ -3,11 +3,11 @@ import type { ChatReply, ChatTurn } from '../../shared/types'
 import { getProjectPose, requireProject } from '../db/projects.repository'
 import { lastRuns } from './live'
 import { collectPads } from '../parsing/pads'
-import { runProbePilot } from '../probe-pilot'
+import { runBackend } from '../backend'
 
 const MM_PER_INCH = 25.4
 
-// One chat turn through probe-pilot's LangGraph agent (scripts/chat.py), with
+// One chat turn through the backend's LangGraph agent (scripts/chat.py), with
 // everything the app knows about the project handed over as the agent's tools.
 export function registerChatIpc(): void {
   ipcMain.handle(
@@ -30,7 +30,7 @@ export function registerChatIpc(): void {
         last_run: lastRuns.get(projectId) ?? null,
         pose: getProjectPose(projectId)
       }
-      const { stdout, stderr } = await runProbePilot(
+      const { stdout, stderr } = await runBackend(
         ['scripts.chat'],
         JSON.stringify({ messages, context })
       )

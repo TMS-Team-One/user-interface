@@ -9,7 +9,7 @@ interface Shown extends ChatTurn {
   tools?: string[]
 }
 
-// One conversation per project, answered by probe-pilot's LangGraph agent, which
+// One conversation per project, answered by the backend's LangGraph agent, which
 // looks at the project through its tools.
 const ChatPanel = ({ project }: { project: ProjectSummary }): React.JSX.Element => {
   const [messages, setMessages] = useState<Shown[]>([])

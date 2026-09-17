@@ -1,6 +1,6 @@
 /**
  * Round holes of an Excellon drill file, in inches like the pads. Same reading
- * as read_excellon in probe-pilot's src/vision/cad_features.py: the header
+ * as read_excellon in backend/src/vision/cad_features.py: the header
  * gives the unit, the zero convention and the digit format; the body switches
  * tools and lists hole positions.
  */

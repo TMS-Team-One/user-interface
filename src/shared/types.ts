@@ -75,7 +75,7 @@ export interface RunTarget {
 }
 
 /**
- * What the probe-pilot runner reports during a test run. Positions are in the
+ * What the backend's runner reports during a test run. Positions are in the
  * board's Gerber frame in millimetres; z is the probe tip's height above the
  * board's top face. A move names its destination and how long the head took.
  */
@@ -93,7 +93,7 @@ export type LiveEvent =
   | { type: 'error'; message: string }
   | { type: 'finished' }
 
-/** Where the board lies on the printer bed, as the probe-pilot runner takes it. */
+/** Where the board lies on the printer bed, as the backend's runner takes it. */
 export interface BoardPose {
   x: number
   y: number
@@ -112,7 +112,7 @@ export interface LocalisedFeature {
 }
 
 /**
- * What scripts/locate_pcb.py in probe-pilot reports for one image. When the
+ * What backend/scripts/locate_pcb.py reports for one image. When the
  * board was not found, `error` says why, `fit` is null and only `detected`,
  * the circles the detector saw, is filled.
  */

@@ -5,3 +5,5 @@ out
 .eslintcache
 *.log*
 src/main/parsing/files/
+.env
+__pycache__/

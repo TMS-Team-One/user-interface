@@ -3,17 +3,17 @@ import { spawn } from 'child_process'
 import { join } from 'path'
 
 export const PYTHON_EXECUTABLE = process.platform === 'win32' ? 'python' : 'python3'
-// The probe-pilot checkout next to this app; PROBE_PILOT_DIR overrides it.
-export const PROBE_PILOT_DIR =
-  process.env.PROBE_PILOT_DIR ?? join(app.getAppPath(), '..', 'probe-pilot')
+// The Python side of the tester (test runner, board localisation, chat agent,
+// firmware), kept in this repository; its scripts run as modules from there.
+export const BACKEND_DIR = join(app.getAppPath(), 'backend')
 
-/** Runs one of probe-pilot's scripts to completion, feeding it `stdin`. */
-export function runProbePilot(
+/** Runs one of the backend's scripts to completion, feeding it `stdin`. */
+export function runBackend(
   args: string[],
   stdin = ''
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_EXECUTABLE, ['-m', ...args], { cwd: PROBE_PILOT_DIR })
+    const child = spawn(PYTHON_EXECUTABLE, ['-m', ...args], { cwd: BACKEND_DIR })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk) => (stdout += chunk))

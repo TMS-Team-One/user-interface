@@ -4,7 +4,7 @@ import { createInterface } from 'readline'
 import type { LiveEvent, RunTarget } from '../../shared/types'
 import { getProjectPose, requireProject } from '../db/projects.repository'
 import { collectPads } from '../parsing/pads'
-import { PROBE_PILOT_DIR, PYTHON_EXECUTABLE } from '../probe-pilot'
+import { BACKEND_DIR, PYTHON_EXECUTABLE } from '../backend'
 
 // Where the board lies on the bed until the camera sync supplies its pose.
 const DEFAULT_POSE = { x: 60, y: 60, z_contact: 12, rotation_deg: 0 }
@@ -25,7 +25,7 @@ export const lastRuns = new Map<number, RunRecord>()
 let runner: ChildProcess | null = null
 
 export function registerLiveIpc(): void {
-  // Sends the project's testable pads to the probe-pilot runner and streams its
+  // Sends the project's testable pads to the backend runner and streams its
   // events back to the window that asked. Returns the number of pads it visits.
   ipcMain.handle('live:start', async (event, projectId: number): Promise<number> => {
     // A superseded runner is killed quietly; only the current one reports its end.
@@ -59,22 +59,22 @@ export function registerLiveIpc(): void {
     const child = spawn(
       PYTHON_EXECUTABLE,
       ['-m', 'scripts.run_test', '--time-scale', SIMULATION_TIME_SCALE],
-      { cwd: PROBE_PILOT_DIR }
+      { cwd: BACKEND_DIR }
     )
     runner = child
     createInterface({ input: child.stdout }).on('line', (line) => {
       try {
         send(JSON.parse(line))
       } catch {
-        console.error('probe-pilot runner said:', line)
+        console.error('backend runner said:', line)
       }
     })
-    child.stderr.on('data', (chunk) => console.error('probe-pilot runner:', String(chunk)))
+    child.stderr.on('data', (chunk) => console.error('backend runner:', String(chunk)))
     child.on('error', (error) => send({ type: 'error', message: String(error) }))
     child.on('close', (code) => {
       if (runner !== child) return
       runner = null
-      if (code) send({ type: 'error', message: `probe-pilot runner exited with code ${code}` })
+      if (code) send({ type: 'error', message: `backend runner exited with code ${code}` })
       send({ type: 'finished' })
     })
     const pose = getProjectPose(projectId) ?? DEFAULT_POSE
