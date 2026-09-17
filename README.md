@@ -46,7 +46,8 @@ $ npm run build:linux
 ## Python side
 
 The main process spawns Python for two jobs. `src/main/parsing/parse-gbr-files.py`
-parses the pads of a Gerber layer. `src/main/hardware_bridge.py` is one long-lived
+is the CLI wrapper around the reusable `gerber_parser.py` module and parses the
+pads of a Gerber layer. `src/main/hardware_bridge.py` is one long-lived
 process that owns the printer and meter connections and serves everything else:
 connecting and homing, manual moves with a measurement, test runs, the camera
 localisation of the board with the camera-to-printer sync, and the chat agent.
@@ -61,9 +62,11 @@ The chat agent uses OpenAI's gpt-4o-mini and needs `OPENAI_API_KEY`, in the
 environment or in a `.env` file in this directory; uploads of unrecognised files
 can be classified with the same key (`src/main/ai/classify-file.ts`). The agent
 drives the printer through the bridge and looks at the project through its own
-tools, so the printer has to be connected from the sidebar before the chat takes
-a message, and it homes the printer before the first one. The chat sits to the
-right of the project's tabs and can be hidden with the button in the header.
+tools, including project-scoped file listing and reading. Text files are returned
+verbatim; Gerber files are parsed before the model sees them. The printer has to
+be connected from the sidebar before the chat takes a message, and it homes the
+printer before the first one. The chat sits to the right of the project's tabs
+and can be hidden with the button in the header.
 
 The sidebar's footer connects to the Ultimaker and opens the manual controls:
 home, move the probe to a position, take one measurement, retract.

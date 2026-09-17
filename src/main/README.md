@@ -189,8 +189,11 @@ bridge.
 The bridge's `chat` method answers one turn with the LangGraph agent. The agent
 gets the printer and meter tools and, from the context the app sends with every
 message (name, files, pads with testability, last run, pose), the project tools
-in `src/main/tools/project.py`. The history is kept per project for as long as
-the bridge runs, and the printer is homed before the first message of a project.
+in `src/main/tools/project.py`. `list_files` exposes only names and database IDs
+from the active project's snapshot; `read_file` can only resolve IDs inside that
+same snapshot. It returns stored text verbatim and runs Gerber content through
+`src/main/parsing/gerber_parser.py`. The history is kept per project for as long
+as the bridge runs, and the printer is homed before the first message of a project.
 
 ## Arduino firmware
 

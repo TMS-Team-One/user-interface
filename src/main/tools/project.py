@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from langchain_core.tools import BaseTool, tool
+from pydantic import BaseModel, Field
+
+from ..parsing.gerber_parser import FileTypeEnum, gerber_file_type, main as parse_gerber
+
+
+class ReadFileInput(BaseModel):
+    id: int = Field(strict=True, gt=0, description="Database ID returned by list_files")
 
 
 def create_project_tools(context: dict) -> list[BaseTool]:
@@ -9,6 +18,66 @@ def create_project_tools(context: dict) -> list[BaseTool]:
     `context` is the document the app sends with each chat message: the project
     name and files, its pads with testability, and the last test run's results.
     """
+
+    project_files = context.get("project_files", [])
+    files_by_id = {
+        file["id"]: file
+        for file in project_files
+        if isinstance(file, dict)
+        and isinstance(file.get("id"), int)
+        and not isinstance(file.get("id"), bool)
+    }
+
+    @tool("list_files")
+    def list_files() -> list[dict]:
+        """List the current project's uploaded file names and database IDs."""
+        return [
+            {"id": file_id, "file_name": file.get("file_name")}
+            for file_id, file in files_by_id.items()
+        ]
+
+    @tool("read_file", args_schema=ReadFileInput)
+    def read_file(id: int) -> dict:
+        """Read one current-project file by an ID returned by list_files.
+
+        Text files are returned verbatim. Gerber files are returned as parsed
+        pads/flashes and board bounds, never as raw Gerber commands.
+        """
+        file = files_by_id.get(id)
+        if file is None:
+            raise ValueError("File not found in the current project")
+
+        file_name = file.get("file_name")
+        content = file.get("content")
+        if not isinstance(file_name, str) or not isinstance(content, str):
+            raise ValueError("The stored project file is incomplete")
+
+        extension_type = gerber_file_type(file_name)
+        is_gerber = file.get("kind") == "gerber" or extension_type is not None
+        if not is_gerber:
+            return {
+                "id": id,
+                "file_name": file_name,
+                "format": "text",
+                "content": content,
+            }
+
+        parsed = parse_gerber(
+            content,
+            filename=file_name,
+            # The file-reading tool represents every Gerber layer, not only
+            # conductive pads. Copper-only filtering remains the default for
+            # the probing pipeline.
+            copper_only=False,
+        )
+        file_type = extension_type or FileTypeEnum.INFER_FROM_ATTRIBUTES
+        return {
+            "id": id,
+            "file_name": file_name,
+            "format": "parsed-gerber",
+            "file_type": file_type.value,
+            "content": asdict(parsed),
+        }
 
     @tool("get_project_summary")
     def get_project_summary() -> dict:
@@ -51,4 +120,12 @@ def create_project_tools(context: dict) -> list[BaseTool]:
         """Backend used and the voltage measured at each pad in the last test run."""
         return context.get("last_run") or {"message": "no test run yet"}
 
-    return [get_project_summary, list_testable_pads, get_last_run, list_nets, list_components]
+    return [
+        list_files,
+        read_file,
+        get_project_summary,
+        list_testable_pads,
+        get_last_run,
+        list_nets,
+        list_components,
+    ]

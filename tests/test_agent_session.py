@@ -96,6 +96,32 @@ def test_new_chat_homes_before_agent_and_streams_tool_activity() -> None:
     assert "Current project: Power rail. Files: power.gbr" in graph.inputs[0]["chat_context"]
 
 
+def test_file_contents_are_not_copied_into_the_system_context() -> None:
+    graph = FakeGraph()
+    sessions = AgentChatSessions(lambda _context: graph, lambda: {"homed": True})
+
+    sessions.chat(
+        project_id=1,
+        message="What files are available?",
+        context={
+            "name": "Board",
+            "files": ["manual.txt (unknown)"],
+            "project_files": [
+                {
+                    "id": 42,
+                    "file_name": "manual.txt",
+                    "kind": "unknown",
+                    "content": "DO NOT LEAK THIS INTO THE SYSTEM CONTEXT",
+                }
+            ],
+        },
+        emit=lambda _event: None,
+    )
+
+    assert "manual.txt (unknown)" in graph.inputs[0]["chat_context"]
+    assert "DO NOT LEAK" not in graph.inputs[0]["chat_context"]
+
+
 def test_existing_chat_keeps_history_without_homing_again() -> None:
     graph = FakeGraph()
     home_calls: list[bool] = []
