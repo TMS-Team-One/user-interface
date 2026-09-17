@@ -36,11 +36,12 @@ MAX_RMS_MM = 0.2           # acceptance threshold for the fit
 COARSE_RMS_MM = 3.0        # a hole assignment whose similarity fit is worse than this is not the board
 HOLE_TOL_MM = 4.0          # a mounting hole predicted from two others must have a circle within this
 MOUNT_RADIUS_RATIO = (0.6, 1.7)  # detected radius / mounting hole radius for a circle to count as that hole
-MOUNT_RADIUS_SPREAD = 1.5  # largest / smallest radius among the circles taken as the (equal) mounting holes
+MOUNT_RADIUS_SPREAD = 1.5  # largest / smallest radius, relative to the hole's, among the circles taken as mounting holes
 OUTLINE_STEP_MM = 1.0      # spacing of the samples taken along the board outline
 OUTLINE_PROBE_MM = 0.6     # how far inside and outside the rim the colours are compared
 OUTLINE_CONTRAST_MIN = 25  # Lab colour distance between inside and outside that counts as the rim
 OUTLINE_SUPPORT_MIN = 0.55 # share of outline samples showing the rim for the pose to be believed
+MAX_MOUNT_HOLES = 6        # biggest holes of at least cad_features.MIN_MOUNT_DIA_MM tried as mounting holes
 MAX_CANDIDATE_CIRCLES = 24 # biggest detected circles tried as mounting holes
 MAX_HYPOTHESES = 500       # best-ranked hole assignments verified against all features
 
@@ -92,15 +93,18 @@ def assign_mounting(circles, mount):
         I, J, K = I.ravel(), J.ravel(), K.ravel()
         keep = (I != J) & (I != K) & (J != K)
         I, J, K = I[keep], J[keep], K[keep]
-        for a, b, c, d in itertools.permutations(range(len(mount)), 4):
+        # Every ordered circle triple is tried, so the order of the hole triple is redundant.
+        for (a, b, c), d in ((triple, d) for triple in itertools.combinations(range(len(mount)), 3)
+                             for d in range(len(mount)) if d not in triple):
             basis_inv = np.linalg.inv(np.c_[mxy[b] - mxy[a], mxy[c] - mxy[a]])
             image_basis = np.stack([pts[J] - pts[I], pts[K] - pts[I]], axis=2)  # (T, 2, 2), columns
             M = image_basis @ basis_inv                                         # (T, 2, 2)
             scale = np.sqrt(np.abs(np.linalg.det(M)))
-            ok = (scale >= scale_min) & (scale <= scale_max)
-            for hole, circle in ((a, I), (b, J), (c, K)):
-                ratio = rad[circle] / (hole_r[hole] * scale)
-                ok &= (ratio >= MOUNT_RADIUS_RATIO[0]) & (ratio <= MOUNT_RADIUS_RATIO[1])
+            ok = (scale >= scale_min) & (scale <= scale_max)  # also drops collinear triples (scale 0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                for hole, circle in ((a, I), (b, J), (c, K)):
+                    ratio = rad[circle] / (hole_r[hole] * scale)
+                    ok &= (ratio >= MOUNT_RADIUS_RATIO[0]) & (ratio <= MOUNT_RADIUS_RATIO[1])
             if not ok.any():
                 continue
             T = np.flatnonzero(ok)
@@ -117,7 +121,8 @@ def assign_mounting(circles, mount):
                 key = tuple(sorted(pairs))
                 if key in candidates:
                     continue
-                radii = rad[[i, j, k, l]]
+                # The circles must be as alike as the holes they stand for.
+                radii = rad[[i, j, k, l]] / hole_r[[a, b, c, d]]
                 if radii.max() / radii.min() > MOUNT_RADIUS_SPREAD:
                     continue
                 src = mxy[[m for m, _ in pairs]]
@@ -259,14 +264,15 @@ def locate(img, features, min_radius, max_radius, threshold, outline=None):
         rim = sample_outline(outline)
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     holes = [f for f in features if f["kind"] == "hole"]
-    mount = [f for f in holes if f["dia"] >= 0.8 * max(f["dia"] for f in holes)] if holes else []
+    mount = sorted((f for f in holes if f["dia"] >= cad_features.MIN_MOUNT_DIA_MM), key=lambda f: -f["dia"])[:MAX_MOUNT_HOLES]
     circles = sorted(detected, key=lambda d: -d[2])[:MAX_CANDIDATE_CIRCLES]
     if len(mount) < 3 or len(circles) < 3:
         raise LocateError(f"need at least 3 mounting holes in the CAD ({len(mount)}) and in the image ({len(circles)})", detected)
-    # Hypothesise the best-ranked assignments and refine each; the one whose refined
-    # homography is consistent with the most CAD features wins. The similarity residual
-    # alone misleads on an oblique camera, and an assignment always explains the holes
-    # it was built from.
+    # Hypothesise the best-ranked assignments and refine each. With the outline known,
+    # a pose whose rim shows in the image beats any other; among those, the one
+    # consistent with the most CAD features wins. The similarity residual alone
+    # misleads on an oblique camera, an assignment always explains the holes it was
+    # built from, and a fifth feature can be a small pad matched by chance.
     cad_xy = np.float64([[f["x"], f["y"]] for f in features])
     best = None
     for coarse_rms, pairs, p in assign_mounting(circles, mount)[:MAX_HYPOTHESES]:
@@ -283,7 +289,8 @@ def locate(img, features, min_radius, max_radius, threshold, outline=None):
             continue
         H, inlier = refined
         support = rim_contrast(H, rim, lab) if outline is not None else None
-        score = (int(inlier.sum()), round(support, 2) if support is not None else 0, -coarse_rms)
+        rim_ok = support is None or support >= OUTLINE_SUPPORT_MIN
+        score = (rim_ok, int(inlier.sum()), round(support, 2) if support is not None else 0, -coarse_rms)
         if best is None or score > best[0]:
             best = (score, coarse_rms, match, H, inlier, support)
     if best is None:
@@ -345,12 +352,15 @@ def locate_board(image_path, cad_dir, bed_path=None, min_radius=None, max_radius
         pose = {"origin_xy": [round(float(tx), 3), round(float(ty), 3)],
                 "angle_deg": round(float(np.degrees(np.arctan2(b, a))), 3),
                 "scale": round(float(np.hypot(a, b)), 4), "rms_mm": round(float(rms), 3)}
-    # Four inliers are the mounting holes the fit was built from, so a fifth feature is
-    # required as an independent check, and the board's rim must lie on an image edge
-    # when the outline is known.
-    passed = fit["inliers"] > MIN_INLIERS and fit["rms_mm"] <= MAX_RMS_MM
+    # Four inliers are the mounting holes the fit was built from, so an independent
+    # check is needed: the board's rim lying on an image edge when the outline is
+    # known (the pads are too small to see from the printer's camera), otherwise a
+    # fifth feature.
+    passed = fit["inliers"] >= MIN_INLIERS and fit["rms_mm"] <= MAX_RMS_MM
     if fit["outline_support"] is not None:
         passed = passed and fit["outline_support"] >= OUTLINE_SUPPORT_MIN
+    else:
+        passed = passed and fit["inliers"] > MIN_INLIERS
 
     rows = []
     for i, f in enumerate(features):

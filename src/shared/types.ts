@@ -127,6 +127,9 @@ export interface LocalisationResult {
     rms_mm: number
     outline_support: number | null
     pass: boolean
+    /** How many camera frames were localised and how many agree with this pose. */
+    frames?: number
+    agreeing?: number
   } | null
   board_to_image: number[][] | null
   /** Every circle the detector found: x, y, radius in image pixels. */

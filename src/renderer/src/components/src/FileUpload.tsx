@@ -11,6 +11,7 @@ import { UploadCloud, FileText, X } from 'lucide-react'
 import type { FileKind, LayerSide, LayerType, ProjectFile } from '@shared/types'
 import { identifyFile } from '@shared/file-kinds'
 import { identifyLayer } from '@shared/gerber-layers'
+import { resolveOutline } from '@shared/outline-choice'
 
 const FILE_KIND_LABELS: Record<FileKind, string> = {
   gerber: 'Gerber layer',
@@ -38,16 +39,56 @@ const LAYER_SIDE_LABELS: Record<LayerSide, string> = {
 
 // How much of an unrecognised file the AI fallback gets to see.
 const AI_HEAD_CHARS = 2000
+// Larger files are not CAD exports of one board.
+const MAX_FILE_BYTES = 50 * 1024 * 1024
 
 function stripExtension(fileName: string): string {
   const lastDot = fileName.lastIndexOf('.')
   return lastDot > 0 ? fileName.slice(0, lastDot) : fileName
 }
 
+// Everything a dropped folder holds, its subfolders included, as files.
+async function filesOfEntry(entry: FileSystemEntry): Promise<File[]> {
+  if (entry.isFile) {
+    return [
+      await new Promise<File>((resolve, reject) =>
+        (entry as FileSystemFileEntry).file(resolve, reject)
+      )
+    ]
+  }
+  const reader = (entry as FileSystemDirectoryEntry).createReader()
+  const entries: FileSystemEntry[] = []
+  // readEntries returns the folder in batches until an empty one.
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject)
+    )
+    if (batch.length === 0) break
+    entries.push(...batch)
+  }
+  const nested = await Promise.all(entries.map(filesOfEntry))
+  return nested.flat()
+}
+
+async function droppedFiles(dataTransfer: DataTransfer): Promise<File[]> {
+  const entries = Array.from(dataTransfer.items)
+    .map((item) => item.webkitGetAsEntry())
+    .filter((entry): entry is FileSystemEntry => entry !== null)
+  if (entries.length === 0) return Array.from(dataTransfer.files)
+  return (await Promise.all(entries.map(filesOfEntry))).flat()
+}
+
+// A folder also holds reports, images and documentation; CAD exports are text.
+function isCandidate(file: File, content: string): boolean {
+  return !file.name.startsWith('.') && file.size <= MAX_FILE_BYTES && !content.includes('\u0000')
+}
+
 // Reads a dropped file and works out what it is: the deterministic rules first,
-// the AI fallback in the main process for whatever they cannot place.
-async function readProjectFile(file: File): Promise<ProjectFile> {
+// the AI fallback in the main process for whatever they cannot place. Null for
+// a file that cannot be a CAD export.
+async function readProjectFile(file: File): Promise<ProjectFile | null> {
   const content = await file.text()
+  if (!isCandidate(file, content)) return null
   let classification = identifyFile(file.name, content)
   if (classification.kind === 'unknown') {
     classification =
@@ -79,8 +120,11 @@ export function FileUpload({
 
     setReading(true)
     try {
-      const added = await Promise.all(fresh.map(readProjectFile))
-      onFilesChange([...files, ...added])
+      const added = (await Promise.all(fresh.map(readProjectFile))).filter(
+        (file): file is ProjectFile => file !== null
+      )
+      if (added.length === 0) return
+      onFilesChange(resolveOutline([...files, ...added]))
       if (!name) onNameChange(stripExtension(added[0].fileName))
     } finally {
       setReading(false)
@@ -121,12 +165,10 @@ export function FileUpload({
     e.target.value = ''
   }
 
-  const handleDrop = (e: React.DragEvent<HTMLLabelElement>): void => {
+  const handleDrop = async (e: React.DragEvent<HTMLLabelElement>): Promise<void> => {
     e.preventDefault()
     setIsDragging(false)
-    if (e.dataTransfer.files) {
-      addFiles(Array.from(e.dataTransfer.files))
-    }
+    addFiles(await droppedFiles(e.dataTransfer))
   }
 
   return (
@@ -222,7 +264,7 @@ export function FileUpload({
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium">
-              <span className="text-primary">Click to upload</span> or drag and drop
+              <span className="text-primary">Click to upload</span> or drag files or a folder here
             </p>
             <p className="text-xs text-muted-foreground">
               {reading
@@ -236,6 +278,19 @@ export function FileUpload({
             multiple
             className="hidden"
             onChange={handleFileChange}
+          />
+        </label>
+        <label
+          htmlFor="folder-upload"
+          className="absolute bottom-2 right-3 z-20 cursor-pointer text-xs text-primary hover:underline"
+        >
+          Choose a folder
+          <Input
+            id="folder-upload"
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            {...{ webkitdirectory: '' }}
           />
         </label>
       </Attachment>

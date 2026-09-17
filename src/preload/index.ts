@@ -36,10 +36,10 @@ const api = {
   vision: {
     locateBoard: (
       projectId: number,
-      frame: ArrayBuffer,
+      frames: ArrayBuffer[],
       outline: [number, number][]
     ): Promise<{ result: LocalisationResult; annotated: ArrayBuffer }> =>
-      ipcRenderer.invoke('vision:locateBoard', projectId, frame, outline),
+      ipcRenderer.invoke('vision:locateBoard', projectId, frames, outline),
     lastLocalisation: (projectId: number): Promise<LocalisationResult | null> =>
       ipcRenderer.invoke('vision:lastLocalisation', projectId),
     printerPosition: (): Promise<PrinterPosition> => ipcRenderer.invoke('vision:printerPosition'),

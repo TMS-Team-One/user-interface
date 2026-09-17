@@ -163,13 +163,19 @@ numbers the holes it needs. The hole detector's radius limits scale with the
 image width and its circle-quality threshold is 0.7; both can be overridden on
 the command line. The coarse fit tries every three detected circles as mounting
 holes with an affine map and predicts the fourth, refines each candidate and
-keeps the one that explains the most CAD features. A pose counts as found only
-with a fifth feature beyond the four holes and, when `--outline outline.json`
-gives the board's edge as `[[x, y], ...]` in mm, when that edge shows a colour
-change in the image along at least 55 % of its length. The camera must look
+keeps the one that explains the most CAD features, preferring poses whose rim
+shows in the image. Mounting holes are every hole of at least 2 mm, the six
+largest of them; a top solder mask adds the round pads as further features but
+is optional. A pose counts as found with the four holes when `--outline
+outline.json` gives the board's edge as `[[x, y], ...]` in mm and that edge
+shows a colour change in the image along at least 55 % of its length; without
+an outline a fifth feature beyond the holes is required. The camera must look
 straight down at the bed: at a flat angle the holes turn into ellipses whose
-centres come out 1 to 2 mm off, and a 720p frame then fails this check on
-purpose. Requires `opencv-python-headless` from `requirements.txt`.
+centres come out 1 to 2 mm off, and such a frame fails the rim check on
+purpose. From the printer's camera (720p, about 5 px per mm) the holes are the
+only features large enough to see, which is what the rim check is for. Requires
+`opencv-python-headless` from `requirements.txt`. `tests/test_locate_pcb.py`
+keeps three camera frames as fixtures.
 
 Quicker than the four-point calibration: locate the board, put the probe tip on
 one of the localised features, read the printer position, and

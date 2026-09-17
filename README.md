@@ -70,14 +70,24 @@ home, move the probe to a position, take one measurement, retract.
 
 The Live View tab plays the tester's camera, a MediaMTX WebRTC stream on the
 Raspberry Pi (default `http://100.127.246.75:8889/pcb/`, changeable in the tab
-and remembered locally). "Locate board" (or "Locate from image" with a photo) runs
-the board localisation on the project's drill and solder-mask files; the camera
-has to look straight down at the bed. Put the probe on one of the localised
-features, enter or read the printer position and press "Sync camera and
-printer": the board's pose is stored with the project and every test run uses
-it. Runs visit only the testable pads: top side, at least 0.6 mm across, not
-under or within 1 mm of a component of the STEP model
-(`src/main/testing/testable-pads.ts`).
+and remembered locally). "Locate board" takes three frames of the stream and
+runs the board localisation on each against the project's drill files (and the
+top solder mask when there is one); the pose counts when most frames agree on
+it. "Locate from image" does the same with one photo. The camera has to look
+straight down at the bed. Put the probe on one of the localised features, enter
+or read the printer position and press "Sync camera and printer": the board's
+pose is stored with the project and every test run uses it. Runs visit only the
+testable pads: top side, at least 0.6 mm across, not under or within 1 mm of a
+component of the STEP model (`src/main/testing/testable-pads.ts`).
+
+A project is created from files or a whole export folder (drag it in or use
+"Choose a folder"); reports, images and other non-CAD files are skipped or
+listed as not used. Altium's mechanical layers all look like outlines by name,
+so the one that spans the copper with the fewest drawing operations is kept as
+the board outline (`src/shared/outline-choice.ts`). Two netlist formats are
+read: IPC-D-356 places nets on the pads, which the run labels and the chat sees;
+Altium's Protel `.net` has no coordinates and only tells the chat agent which
+component pins share a net.
 
 Two Claude Code skills in `.claude/skills` cover the Arduino firmware in
 `src/main/firmware`: `arduino-firmware` for writing it and `arduino-flash` for

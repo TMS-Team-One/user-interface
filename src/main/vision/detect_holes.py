@@ -26,8 +26,10 @@ MIN_RADIUS_AT_REFERENCE = 10
 MAX_RADIUS_AT_REFERENCE = 80
 CANNY = 200            # HoughCircles param1: upper Canny edge threshold
 DP = 1.5               # HoughCircles accumulator resolution (image px per cell)
-MAX_INTERIOR_STD = 45  # reject circles with markings inside (logo rings, text, grid)
-MIN_CONTRAST = 15      # reject circles whose inside looks like their outside (domes, sockets)
+# A hole on the printer shows the bed through it, textured and sometimes close in
+# brightness to the copper ring around it, so both limits leave room for that.
+MAX_INTERIOR_STD = 60  # reject circles with markings inside (logo rings, text, grid)
+MIN_CONTRAST = 10      # reject circles whose inside looks like their outside (domes, sockets)
 
 
 def default_radii(width):

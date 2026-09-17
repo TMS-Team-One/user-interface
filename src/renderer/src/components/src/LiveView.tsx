@@ -59,10 +59,28 @@ function describeFit(result: LocalisationResult): string {
   const { fit } = result
   if (!fit) return `${result.error ?? 'not found'} (${result.detected.length} circles seen)`
   const rim = fit.outline_support === null ? '' : `, rim ${Math.round(fit.outline_support * 100)}%`
+  const frames =
+    fit.frames !== undefined && fit.frames > 1
+      ? `, ${fit.agreeing} of ${fit.frames} frames agree`
+      : ''
   return (
     `${fit.matched} of ${result.features.length} CAD features matched, ${fit.inliers} consistent, ` +
-    `RMS ${fit.rms_mm.toFixed(3)} mm${rim}: ${fit.pass ? 'pass' : 'fail'}`
+    `RMS ${fit.rms_mm.toFixed(3)} mm${rim}${frames}: ${fit.pass ? 'pass' : 'fail'}`
   )
+}
+
+// One click localises this many frames of the stream, this far apart, and keeps
+// the pose most of them agree on.
+const CONSENSUS_FRAMES = 3
+const FRAME_GAP_MS = 150
+
+async function captureFrames(video: HTMLVideoElement): Promise<ArrayBuffer[]> {
+  const frames: ArrayBuffer[] = []
+  for (let i = 0; i < CONSENSUS_FRAMES; i++) {
+    if (i > 0) await new Promise((resolve) => setTimeout(resolve, FRAME_GAP_MS))
+    frames.push(await captureFrame(video))
+  }
+  return frames
 }
 
 // A board point through the board-to-image homography.
@@ -196,14 +214,14 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
     }
   }, [project.id])
 
-  const locate = async (frame: Promise<ArrayBuffer>, fromFile: boolean): Promise<void> => {
+  const locate = async (frames: Promise<ArrayBuffer[]>, fromFile: boolean): Promise<void> => {
     setBusy('Locating the board...')
     setMessage(null)
     try {
-      const bytes = await frame
+      const bytes = await frames
       const { result } = await window.api.vision.locateBoard(project.id, bytes, outline)
       setLocated(result)
-      setStillUrl(fromFile ? await toDataUrl(bytes) : null)
+      setStillUrl(fromFile ? await toDataUrl(bytes[0]) : null)
       setFeatureId(result.features.find((feature) => feature.inlier)?.id ?? null)
       setMessage(describeFit(result))
     } catch (error) {
@@ -294,7 +312,7 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
         <Button
           size="sm"
           disabled={busy !== null || cameraError !== null}
-          onClick={() => videoRef.current && locate(captureFrame(videoRef.current), false)}
+          onClick={() => videoRef.current && locate(captureFrames(videoRef.current), false)}
         >
           <Crosshair></Crosshair>Locate board
         </Button>
@@ -310,7 +328,11 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0]
-              if (file) locate(file.arrayBuffer(), true)
+              if (file)
+                locate(
+                  file.arrayBuffer().then((bytes) => [bytes]),
+                  true
+                )
               event.target.value = ''
             }}
           />

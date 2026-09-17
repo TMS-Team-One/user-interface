@@ -4,6 +4,7 @@ import type { ParsedPad, Project } from '../../shared/types'
 import { getProjectModel } from '../db/projects.repository'
 import { assignNets } from '../netlist/assign-nets'
 import { parseIpcD356 } from '../netlist/ipc-d-356'
+import { isProtelNetlist } from '../netlist/protel'
 import { componentFootprints, markTestablePads, type MaskOpening } from '../testing/testable-pads'
 import { readExcellon } from './excellon'
 import { getGerberParserCommand } from '../python/parser-runtime'
@@ -82,7 +83,8 @@ export async function collectPads(project: Project): Promise<ParsedPad[]> {
   const holes = files
     .filter((file) => file.kind === 'drill')
     .flatMap((file) => readExcellon(file.content))
-  const netlist = files.find((file) => file.kind === 'netlist')
+  // Only an IPC-D-356 netlist places nets on pads; a Protel one has no coordinates.
+  const netlist = files.find((file) => file.kind === 'netlist' && !isProtelNetlist(file.content))
   if (netlist) pads = assignNets(pads, parseIpcD356(netlist.content))
 
   const model = getProjectModel(project.id)

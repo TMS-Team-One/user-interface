@@ -3,7 +3,7 @@
 
     python3 cad_features.py CAD_DIR        # list them
 
-hole: non-plated round drill hole (mounting holes), from the Excellon drill file.
+hole: round drill hole big enough to see, or any non-plated one, from the Excellon drill file.
 pad:  round opening in the top solder mask that is not on a drilled hole (test points,
       fiducials, exposed pour spots), from the top solder-mask Gerber.
 Plated holes are left out: they carry pins or are vias under solder mask, so they are not
@@ -15,6 +15,9 @@ import re
 import sys
 
 import numpy as np
+
+# A hole at least this big can serve as a mounting hole for the coarse fit.
+MIN_MOUNT_DIA_MM = 2.0
 
 
 def _coord(text, unit, zeros, digits):
@@ -121,20 +124,24 @@ def read_gerber_circles(path):
 
 
 def load(cad_dir):
-    """Visible circular features of the board -> (features, files used)."""
+    """Visible circular features of the board -> (features, files used). The drill
+    files give the holes; a top solder-mask Gerber, when there is one, adds the round pads."""
     paths = sorted(p for p in glob.glob(os.path.join(cad_dir, "**", "*"), recursive=True) if os.path.isfile(p))
     drills = [p for p in paths if open(p, errors="replace").readline().strip() == "M48"]
     masks = [p for p in paths if re.search(r"\.gts$|f[_.-]?mask", os.path.basename(p), re.I)]
-    if not drills or not masks:
-        raise FileNotFoundError(f"need an Excellon drill file and a top solder-mask Gerber in {cad_dir}")
+    if not drills:
+        raise FileNotFoundError(f"need an Excellon drill file in {cad_dir}")
     holes = [h for p in drills for h in read_excellon(p)]
-    features = [{"kind": "hole", "x": x, "y": y, "dia": d} for x, y, d, plated in holes if not plated]
-    for x, y, d in read_gerber_circles(masks[0]):
+    # Mounting holes are often plated; small plated holes are vias and pins the camera cannot see.
+    features = [{"kind": "hole", "x": x, "y": y, "dia": d} for x, y, d, plated in holes
+                if not plated or d >= MIN_MOUNT_DIA_MM]
+    for x, y, d in read_gerber_circles(masks[0]) if masks else []:
         on_hole = any(np.hypot(x - hx, y - hy) <= 0.5 for hx, hy, _, _ in holes)
         seen = any(np.hypot(x - f["x"], y - f["y"]) <= 0.25 for f in features)
         if not on_hole and not seen:
             features.append({"kind": "pad", "x": x, "y": y, "dia": d})
-    files = {"drill": [os.path.relpath(p, cad_dir) for p in drills], "mask": os.path.relpath(masks[0], cad_dir)}
+    files = {"drill": [os.path.relpath(p, cad_dir) for p in drills],
+             "mask": os.path.relpath(masks[0], cad_dir) if masks else None}
     return features, files
 
 

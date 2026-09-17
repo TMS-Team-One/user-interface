@@ -31,7 +31,7 @@ export interface ProjectsApi {
 export interface VisionApi {
   locateBoard: (
     projectId: number,
-    frame: ArrayBuffer,
+    frames: ArrayBuffer[],
     outline: [number, number][]
   ) => Promise<{ result: LocalisationResult; annotated: ArrayBuffer }>
   lastLocalisation: (projectId: number) => Promise<LocalisationResult | null>
