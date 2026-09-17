@@ -9,6 +9,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 DEFAULT_PROVIDER = "openai"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+# DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 
 # Alternatives
 # Anthropic

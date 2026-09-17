@@ -17,7 +17,10 @@ import {
   MessageScrollerViewport
 } from '@/components/ui/message-scroller'
 import { Spinner } from '@/components/ui/spinner'
+import { useBoardRender } from '@/hooks/use-board-render'
 import { useConnection } from '@/hooks/use-connection'
+import { outlineFromRender } from '@/lib/board-outline'
+import { loadCameraUrl } from '@/lib/camera-url'
 import type {
   ChatEvent,
   ChatMessageItem,
@@ -28,6 +31,7 @@ import type {
 import {
   ArrowUpRight,
   Bot,
+  Camera,
   Check,
   ChevronRight,
   CircleAlert,
@@ -37,13 +41,16 @@ import {
   Search,
   Sparkles
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 // One conversation per project with the agent in the hardware bridge: it can
 // look at the project through its tools and drive the printer, so it needs the
 // printer connected and homes it before the first message.
 function ChatPanel({ project }: { project: ProjectSummary }): React.JSX.Element {
   const { connectionEstablished, setPrinterHomed } = useConnection()
+  // The agent's camera tool looks for the board in its pictures along the outline.
+  const { render } = useBoardRender(project.id)
+  const outline = useMemo(() => (render ? outlineFromRender(render) : []), [render])
   const [items, setItems] = useState<ChatTimelineItem[]>([])
   const [draft, setDraft] = useState('')
   const [streamingText, setStreamingText] = useState('')
@@ -102,7 +109,13 @@ function ChatPanel({ project }: { project: ProjectSummary }): React.JSX.Element 
     ])
 
     try {
-      const result = await window.api.chat.send({ runId, projectId: project.id, message })
+      const result = await window.api.chat.send({
+        runId,
+        projectId: project.id,
+        message,
+        cameraUrl: loadCameraUrl(),
+        outline
+      })
       setItems(result.items)
     } catch (caughtError) {
       setError(hardwareErrorMessage(caughtError))
@@ -261,9 +274,11 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
       ? Search
       : FILE_TOOLS.has(item.name)
         ? File
-        : PROJECT_TOOLS.has(item.name)
-          ? FileSearch
-          : ArrowUpRight
+        : item.name === 'take_picture'
+          ? Camera
+          : PROJECT_TOOLS.has(item.name)
+            ? FileSearch
+            : ArrowUpRight
   const icon =
     item.status === 'running' ? (
       <Spinner className="size-3.5" />
@@ -273,6 +288,8 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
       <CircleAlert className="size-4 text-destructive" />
     )
   const context = toolContext(item)
+  const picture = asRecord(item.result)?.picture_data_url
+  const details = { input: item.args, result: withoutPicture(item.result) }
   const hasDetails = Object.keys(item.args).length > 0 || item.result !== undefined
 
   return (
@@ -292,6 +309,13 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
             {context && <span className="text-xs text-muted-foreground/80">{context}</span>}
           </div>
           {item.error && <p className="mt-0.5 text-xs text-destructive">{item.error}</p>}
+          {typeof picture === 'string' && (
+            <img
+              src={picture}
+              alt="Picture from the camera"
+              className="mt-1.5 max-h-56 rounded-md border object-contain"
+            />
+          )}
           {hasDetails && (
             <details className="group/details mt-0.5 text-xs text-muted-foreground">
               <summary className="inline-flex cursor-pointer list-none items-center gap-0.5 select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
@@ -299,7 +323,7 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
                 Details
               </summary>
               <pre className="mt-1.5 overflow-auto whitespace-pre-wrap border-l pl-3 font-mono text-[11px] leading-relaxed">
-                {JSON.stringify({ input: item.args, result: item.result }, null, 2)}
+                {JSON.stringify(details, null, 2)}
               </pre>
             </details>
           )}
@@ -315,7 +339,13 @@ function ToolActivity({ item }: { item: ChatToolItem }): React.JSX.Element {
   )
 }
 
-const PROJECT_TOOLS = new Set(['get_project_summary', 'list_testable_pads', 'get_last_run'])
+const PROJECT_TOOLS = new Set([
+  'get_project_summary',
+  'list_testable_pads',
+  'get_last_run',
+  'list_nets',
+  'list_components'
+])
 const FILE_TOOLS = new Set(['list_files', 'read_file'])
 
 type TimelineGroup =
@@ -422,6 +452,21 @@ function toolLabel(name: string, status: ChatToolItem['status']): string {
       running: 'Reading the last test run…',
       success: 'Read the last test run',
       error: 'Could not read the last test run'
+    },
+    list_nets: {
+      running: 'Listing nets…',
+      success: 'Listed nets',
+      error: 'Could not list nets'
+    },
+    list_components: {
+      running: 'Listing components…',
+      success: 'Listed components',
+      error: 'Could not list components'
+    },
+    take_picture: {
+      running: 'Taking a picture…',
+      success: 'Took a picture',
+      error: 'Could not take a picture'
     }
   }
   return labels[name]?.[status] || name.replaceAll('_', ' ')
@@ -442,7 +487,19 @@ function toolContext(item: ChatToolItem): string | undefined {
   if (item.name === 'is_printer_reachable' && typeof result?.reachable === 'boolean') {
     return result.reachable ? 'Reachable' : 'Not reachable'
   }
+
+  const board = asRecord(result?.board)
+  if (item.name === 'take_picture' && board) {
+    return board.found ? `Board found, ${board.angle_deg}°` : 'Board not found'
+  }
   return undefined
+}
+
+// The picture is shown above the details, not repeated as a wall of base64.
+function withoutPicture(result: unknown): unknown {
+  const record = asRecord(result)
+  if (!record || !('picture_data_url' in record)) return result
+  return Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'picture_data_url'))
 }
 
 function formatPosition(position: Record<string, unknown>): string | undefined {

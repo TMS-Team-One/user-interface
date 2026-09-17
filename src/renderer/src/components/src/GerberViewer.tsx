@@ -20,6 +20,9 @@ const toPercentString = (scale: number): string => String(Math.round(scale * 100
 const PAD_MARKER_RADIUS_RATIO = 0.006
 const TESTABLE_PAD_COLOR = '#22c55e'
 const UNTESTABLE_PAD_COLOR = '#9ca3af'
+const SELECTED_PAD_COLOR = '#f59e0b'
+// A press that moved further than this is a pan, not a pad click.
+const CLICK_TOLERANCE_PX = 4
 
 // Places a marker for each pad directly inside the rendered SVG. pcb-stackup
 // draws the board in the Gerber files' units x 1000, flips the y axis so the
@@ -31,7 +34,9 @@ function drawPadOverlay(
   svgEl: SVGSVGElement,
   pads: ParsedPad[],
   units: BoardRender['units'],
-  side: Side
+  side: Side,
+  selected: ParsedPad | null,
+  onPress: ((pad: ParsedPad) => void) | null
 ): void {
   const viewBox = svgEl.viewBox.baseVal
   if (!viewBox || viewBox.width <= 0 || viewBox.height <= 0) {
@@ -52,8 +57,13 @@ function drawPadOverlay(
     const circle = document.createElementNS(svgNs, 'circle')
     circle.setAttribute('cx', String(pad.x * scale))
     circle.setAttribute('cy', String(pad.y * scale))
-    circle.setAttribute('r', String(radius))
-    const color = pad.testable ? TESTABLE_PAD_COLOR : UNTESTABLE_PAD_COLOR
+    const isSelected = pad === selected
+    circle.setAttribute('r', String(isSelected ? radius * 1.8 : radius))
+    const color = isSelected
+      ? SELECTED_PAD_COLOR
+      : pad.testable
+        ? TESTABLE_PAD_COLOR
+        : UNTESTABLE_PAD_COLOR
     circle.setAttribute('fill', color)
     circle.setAttribute('fill-opacity', '0.7')
     circle.setAttribute('stroke', color)
@@ -65,6 +75,10 @@ function drawPadOverlay(
       `${label} (${pad.x.toFixed(3)}, ${pad.y.toFixed(3)} ${pad.unit})` +
       (pad.untestableReason ? ` - not testable: ${pad.untestableReason}` : ' - testable')
     circle.appendChild(title)
+    if (onPress) {
+      circle.style.cursor = 'pointer'
+      circle.addEventListener('pointerdown', () => onPress(pad))
+    }
 
     group.appendChild(circle)
   }
@@ -74,10 +88,15 @@ function drawPadOverlay(
 
 const GerberViewer = ({
   project,
-  pads
+  pads,
+  selectedPad = null,
+  onPadClick
 }: {
   project: ProjectSummary
   pads: ParsedPad[] | null
+  selectedPad?: ParsedPad | null
+  /** A pad marker was clicked (pressed and released without panning). */
+  onPadClick?: (pad: ParsedPad) => void
 }): React.JSX.Element => {
   const { render, error } = useBoardRender(project.id)
   const [side, setSide] = useState<Side>('top')
@@ -86,6 +105,15 @@ const GerberViewer = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const dragOrigin = useRef<{ x: number; y: number } | null>(null)
   const zoomInputFocused = useRef(false)
+  // The pad under the pointer when it went down, kept until it comes up: the
+  // pan captures the pointer, so the marker itself never sees a click.
+  const pressedPad = useRef<ParsedPad | null>(null)
+  const pressStart = useRef<{ x: number; y: number } | null>(null)
+  const panned = useRef(false)
+  const padClick = useRef(onPadClick)
+  useEffect(() => {
+    padClick.current = onPadClick
+  })
 
   useEffect(() => {
     if (!containerRef.current || render === null) return
@@ -104,11 +132,13 @@ const GerberViewer = ({
           svgEl,
           pads.filter((pad) => pad.side === side),
           render.units,
-          side
+          side,
+          selectedPad,
+          onPadClick ? (pad) => (pressedPad.current = pad) : null
         )
       }
     }
-  }, [render, pads, side])
+  }, [render, pads, side, selectedPad, onPadClick])
 
   const setScale = (scale: number): void => {
     const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
@@ -136,6 +166,8 @@ const GerberViewer = ({
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     dragOrigin.current = { x: event.clientX - view.x, y: event.clientY - view.y }
+    pressStart.current = { x: event.clientX, y: event.clientY }
+    panned.current = false
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
@@ -143,6 +175,13 @@ const GerberViewer = ({
     // Read the origin now: the updater runs later, possibly after the pointer was released.
     const origin = dragOrigin.current
     if (!origin) return
+    const start = pressStart.current
+    if (
+      start &&
+      Math.hypot(event.clientX - start.x, event.clientY - start.y) > CLICK_TOLERANCE_PX
+    ) {
+      panned.current = true
+    }
     setView((prev) => ({
       ...prev,
       x: event.clientX - origin.x,
@@ -152,6 +191,14 @@ const GerberViewer = ({
 
   const handlePointerUp = (): void => {
     dragOrigin.current = null
+    const pad = pressedPad.current
+    pressedPad.current = null
+    if (pad && !panned.current) padClick.current?.(pad)
+  }
+
+  const handlePointerLeave = (): void => {
+    dragOrigin.current = null
+    pressedPad.current = null
   }
 
   const resetView = (): void => {
@@ -186,7 +233,7 @@ const GerberViewer = ({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
       >
         <div
           ref={containerRef}

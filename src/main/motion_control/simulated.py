@@ -12,6 +12,7 @@ class SimulatedMotion:
     Z_SPEED_FAST = 1000  # mm/min
     Z_SPEED_SLOW = 300   # mm/min
     SLOW_Z_THRESHOLD = 30.0
+    MAX_JOG_MM = 10.0
 
     def __init__(self, time_scale: float = 1.0):
         # time_scale < 1 runs faster than real time (useful for demos), 0 skips the waits
@@ -36,6 +37,16 @@ class SimulatedMotion:
             self._wait(distance, self.XY_SPEED)
             self.position = (x, y, self.position[2])
         self._move_z(z)
+
+    def jog(self, dx: float, dy: float, dz: float) -> None:
+        if max(abs(dx), abs(dy), abs(dz)) > self.MAX_JOG_MM:
+            raise ValueError(f"a jog moves at most {self.MAX_JOG_MM:g} mm at a time")
+        x, y, z = self.position
+        if dx or dy:
+            self._wait((dx ** 2 + dy ** 2) ** 0.5, self.XY_SPEED)
+            self.position = (x + dx, y + dy, z)
+        if dz:
+            self._move_z(z + dz)
 
     def _move_z(self, z: float) -> None:
         current_z = self.position[2]

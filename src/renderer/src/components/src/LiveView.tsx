@@ -1,6 +1,13 @@
-import type { BoardPose, LocalisationResult, PrinterPosition, ProjectSummary } from '@shared/types'
+import type {
+  BoardPose,
+  CameraRegistration,
+  LocalisationResult,
+  PrinterPosition,
+  ProjectSummary,
+  SheetView
+} from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CameraOff, Crosshair, ImageUp, Link } from 'lucide-react'
+import { CameraOff, Crosshair, ImageUp, Link, Ruler } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,22 +16,14 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { useBoardRender } from '@/hooks/use-board-render'
 import { outlineFromRender } from '@/lib/board-outline'
+import { DEFAULT_CAMERA_URL, loadCameraUrl, saveCameraUrl } from '@/lib/camera-url'
+import { describeError } from '@/lib/errors'
 import { playWhepStream } from '@/lib/whep'
+import { CameraRegistrationPanel } from './CameraRegistration'
 
 const FRAME_JPEG_QUALITY = 0.92
-// The tester's camera: a MediaMTX WebRTC stream on the Raspberry Pi. The last
-// address used is kept in this browser's storage.
-const DEFAULT_CAMERA_URL = 'http://100.127.246.75:8889/pcb/'
-const CAMERA_URL_KEY = 'cameraUrl'
-
-function loadCameraUrl(): string {
-  try {
-    return localStorage.getItem(CAMERA_URL_KEY) ?? DEFAULT_CAMERA_URL
-  } catch {
-    return DEFAULT_CAMERA_URL
-  }
-}
-
+// How long to wait before playing the stream again after it ended on its own.
+const RECONNECT_DELAY_MS = 2000
 // Captures the current video frame as a JPEG, the form the localisation takes.
 function captureFrame(video: HTMLVideoElement): Promise<ArrayBuffer> {
   const canvas = document.createElement('canvas')
@@ -50,11 +49,6 @@ function toDataUrl(jpeg: ArrayBuffer): Promise<string> {
   })
 }
 
-// Electron wraps errors thrown in the main process; the operator wants the cause only.
-function describeError(error: unknown): string {
-  return String(error).replace(/^Error: Error invoking remote method '[^']+': (Error: )?/, '')
-}
-
 function describeFit(result: LocalisationResult): string {
   const { fit } = result
   if (!fit) return `${result.error ?? 'not found'} (${result.detected.length} circles seen)`
@@ -63,9 +57,18 @@ function describeFit(result: LocalisationResult): string {
     fit.frames !== undefined && fit.frames > 1
       ? `, ${fit.agreeing} of ${fit.frames} frames agree`
       : ''
+  const pose = result.pose_on_printer
+  const printer = pose
+    ? `; on the printer at (${pose.x.toFixed(2)}, ${pose.y.toFixed(2)}) mm, ${pose.rotation_deg.toFixed(1)}°, ` +
+      `${pose.board_height_mm.toFixed(1)} mm above the sheet (${pose.height_estimated ? 'estimated' : 'measured'}), ` +
+      `${pose.corners_seen} sheet corners` +
+      (pose.warnings.length > 0 ? ` (${pose.warnings.join('; ')})` : '')
+    : result.sheet_error
+      ? `; no printer pose: ${result.sheet_error}`
+      : ''
   return (
     `${fit.matched} of ${result.features.length} CAD features matched, ${fit.inliers} consistent, ` +
-    `RMS ${fit.rms_mm.toFixed(3)} mm${rim}${frames}: ${fit.pass ? 'pass' : 'fail'}`
+    `RMS ${fit.rms_mm.toFixed(3)} mm${rim}${frames}: ${fit.pass ? 'pass' : 'fail'}${printer}`
   )
 }
 
@@ -146,6 +149,51 @@ function LocalisationOverlay({
   )
 }
 
+// The sheet as last seen: its numbered targets and the glass plate's outline.
+function SheetOverlay({ view }: { view: SheetView }): React.JSX.Element {
+  const { width, height } = view.image
+  const stroke = Math.max(1, width / 640)
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
+      className="pointer-events-none absolute inset-0 size-full"
+      data-overlay="sheet"
+    >
+      {view.outline_px && (
+        <polygon
+          points={view.outline_px.map((point) => point.join(',')).join(' ')}
+          fill="none"
+          stroke="#f8fafc"
+          strokeWidth={stroke}
+          strokeDasharray={`${stroke * 6} ${stroke * 6}`}
+        />
+      )}
+      {Object.entries(view.targets).map(([target, [x, y]]) => (
+        <g key={target}>
+          <circle
+            cx={x}
+            cy={y}
+            r={stroke * 8}
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth={stroke * 1.5}
+          />
+          <text
+            x={x + stroke * 10}
+            y={y - stroke * 10}
+            fill="#f59e0b"
+            fontSize={stroke * 16}
+            fontWeight="bold"
+          >
+            {target}
+          </text>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
 function describePose(pose: BoardPose): string {
   return (
     `origin (${pose.x.toFixed(2)}, ${pose.y.toFixed(2)}) mm, ` +
@@ -169,35 +217,42 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
   const [printer, setPrinter] = useState<PrinterPosition>({ x: 0, y: 0, z: 0 })
   const [pose, setPose] = useState<BoardPose | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [registering, setRegistering] = useState(false)
+  const [registration, setRegistration] = useState<CameraRegistration>({
+    camera: null,
+    sheet: null
+  })
+  // The sheet as the registration panel last found it, drawn over the video.
+  const [sheetView, setSheetView] = useState<SheetView | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!videoRef.current) return
-    let stale = false
-    let stop: (() => void) | null = null
-    setCameraError(null)
-    playWhepStream(cameraUrl, videoRef.current, window.api.live.whep)
-      .then((stopStream) => {
-        if (stale) stopStream()
-        else stop = stopStream
+    const video = videoRef.current
+    if (!video) return
+    const controller = new AbortController()
+    let retry: ReturnType<typeof setTimeout> | null = null
+    const start = (): void => {
+      setCameraError(null)
+      playWhepStream(cameraUrl, video, window.api.live.whep, controller.signal, () => {
+        // The stream stopped on its own (camera or server restarted): try again shortly.
+        retry = setTimeout(start, RECONNECT_DELAY_MS)
+      }).catch((err) => {
+        if (!controller.signal.aborted) {
+          setCameraError(`No stream from ${cameraUrl}: ${describeError(err)}`)
+        }
       })
-      .catch((err) => {
-        if (!stale) setCameraError(`No stream from ${cameraUrl}: ${describeError(err)}`)
-      })
+    }
+    start()
     return () => {
-      stale = true
-      stop?.()
+      controller.abort()
+      if (retry) clearTimeout(retry)
     }
   }, [cameraUrl])
 
   const connectCamera = (): void => {
     const url = urlDraft.trim()
     if (!url) return
-    try {
-      localStorage.setItem(CAMERA_URL_KEY, url)
-    } catch {
-      // storage unavailable: the address still applies to this session
-    }
+    saveCameraUrl(url)
     setCameraUrl(url)
   }
 
@@ -214,6 +269,16 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
     }
   }, [project.id])
 
+  useEffect(() => {
+    let stale = false
+    window.api.vision.registration().then((saved) => {
+      if (!stale) setRegistration(saved)
+    })
+    return () => {
+      stale = true
+    }
+  }, [])
+
   const locate = async (frames: Promise<ArrayBuffer[]>, fromFile: boolean): Promise<void> => {
     setBusy('Locating the board...')
     setMessage(null)
@@ -221,6 +286,11 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
       const bytes = await frames
       const { result } = await window.api.vision.locateBoard(project.id, bytes, outline)
       setLocated(result)
+      const printer = result.pose_on_printer
+      if (result.fit?.pass && printer && printer.z_contact !== null) {
+        const { x, y, z_contact, rotation_deg } = printer
+        setPose({ x, y, z_contact, rotation_deg })
+      }
       setStillUrl(fromFile ? await toDataUrl(bytes[0]) : null)
       setFeatureId(result.features.find((feature) => feature.inlier)?.id ?? null)
       setMessage(describeFit(result))
@@ -261,7 +331,7 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <Card className="relative flex-1 min-h-0 gap-0 overflow-hidden bg-black p-0 shadow-none">
+      <Card className="relative min-h-48 flex-1 gap-0 overflow-hidden bg-black p-0 shadow-none">
         {cameraError && !stillUrl && (
           <Empty className="h-full">
             <EmptyHeader>
@@ -286,6 +356,7 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
         {located && !(cameraError && !stillUrl) && (
           <LocalisationOverlay result={located} outline={outline} />
         )}
+        {registering && sheetView && !cameraError && <SheetOverlay view={sheetView} />}
       </Card>
       <form
         className="flex shrink-0 items-center gap-2"
@@ -349,8 +420,47 @@ const LiveView = ({ project }: { project: ProjectSummary }): React.JSX.Element =
             Clear
           </Button>
         )}
+        <Button
+          size="sm"
+          variant={registering ? 'secondary' : 'ghost'}
+          onClick={() => {
+            setRegistering((open) => !open)
+            setSheetView(null)
+            // The sheet may have been registered from the manual controls meanwhile.
+            window.api.vision.registration().then(setRegistration)
+          }}
+        >
+          <Ruler />
+          {registering ? 'Close registration' : 'Register camera'}
+        </Button>
         <span className="text-sm text-muted-foreground">{busy ?? message}</span>
       </div>
+      {registering && (
+        <CameraRegistrationPanel
+          projectId={project.id}
+          located={located}
+          outline={outline}
+          registration={registration}
+          busy={busy !== null}
+          captureFrame={async () => {
+            if (!videoRef.current || cameraError) throw new Error('No camera frame')
+            return captureFrame(videoRef.current)
+          }}
+          onRegistration={setRegistration}
+          onSheetView={setSheetView}
+          onPose={(saved) => {
+            setLocated((current) => (current ? { ...current, pose_on_printer: saved } : current))
+            if (saved.z_contact !== null) {
+              setPose({
+                x: saved.x,
+                y: saved.y,
+                z_contact: saved.z_contact,
+                rotation_deg: saved.rotation_deg
+              })
+            }
+          }}
+        />
+      )}
       {located?.fit?.pass && (
         <div className="flex shrink-0 flex-wrap items-end gap-2">
           <div className="grid gap-1">

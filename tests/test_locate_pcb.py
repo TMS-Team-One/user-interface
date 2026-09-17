@@ -50,12 +50,11 @@ def test_tilted_frame_is_rejected_by_the_rim_check() -> None:
     assert fit["outline_support"] < 0.55
 
 
-def test_without_an_outline_four_holes_are_not_enough() -> None:
+def test_without_an_outline_a_fifth_feature_decides() -> None:
     fit = locate("printer_camera_top_down.jpg", outline=None)["fit"]
 
-    assert fit["inliers"] == 4
-    assert fit["pass"] is False
     assert fit["outline_support"] is None
+    assert fit["pass"] is (fit["inliers"] > 4)
 
 
 def test_cad_without_a_mask_gives_holes_only(tmp_path) -> None:

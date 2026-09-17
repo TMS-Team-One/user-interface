@@ -30,10 +30,12 @@ class UltimakerMotion:
     - `home() -> None`;                             homes all axes
     - `get_position() -> [float, float, float]`;    returns current (x,y,z) position
     - `move_to(x,y,z) -> None`;                     moves head safely to target position
+    - `jog(dx,dy,dz) -> None`;                      short relative move without the lift to SAFE_Z
 
     Safety:
-    - Validates all target coordinates against the configured X, Y, Z ranges
-    - Never commands a Z position below MIN_SAFE_Z
+    - Validates all target coordinates against the configured X, Y, Z ranges (Y and Z
+      extended to the homed position, where their travel ends)
+    - Never commands a Z position below MIN_SAFE_Z (the glass; the tip touches the sheet there)
     - Performs XY movement only at or above SAFE_Z
     - Speeds: uses XY_SPEED mm/min for horizontal movement, Z_SPEED_FAST mm/min for Z movement above SLOW_Z_THRESHOLD,
       Z_SPEED_SLOW mm/min near the PCB below SLOW_Z_THRESHOLD
@@ -47,8 +49,9 @@ class UltimakerMotion:
     Z_SPEED_SLOW = 300   # mm/min
 
     SAFE_Z = 50.0     # safe height for XY movement
-    MIN_SAFE_Z = 10.0 # NEVER move probe below this value
+    MIN_SAFE_Z = 0.0  # the tip must reach the glass (the bed sheet lies on it); the endstop is the floor
     SLOW_Z_THRESHOLD = 30.0  # slow down below this height
+    MAX_JOG_MM = 10.0  # the longest step a jog takes
 
     def __init__(self):
         self.printer = _create_connection()
@@ -104,10 +107,15 @@ class UltimakerMotion:
             return False
 
 
-    # Home all axes for calibration and waits until action completed
+    # Home all axes for calibration and waits until action completed.
+    # Y and Z home at their far ends, a little beyond the print volume the ranges
+    # come from; the homed position is where their travel ends.
     def home(self) -> None:
         self._send_gcode("G28")
         self._send_gcode("M400")
+        _, y, z = self.get_position()
+        self.Y_RANGE = (self.Y_RANGE[0], max(self.Y_RANGE[1], y))
+        self.Z_RANGE = (self.Z_RANGE[0], max(self.Z_RANGE[1], z))
 
 
     # Returns the current position as (x,y,z) all being floats
@@ -149,6 +157,23 @@ class UltimakerMotion:
 
         # Move probe down/up to target Z
         self._move_z(z)
+
+
+    # A short relative move by the operator who watches the probe: no lift to SAFE_Z,
+    # so the tip can be walked onto a sheet target or a board at working height.
+    # Slow near the PCB, capped at MAX_JOG_MM per call, same axis limits as move_to.
+    def jog(self, dx: float, dy: float, dz: float) -> None:
+        if max(abs(dx), abs(dy), abs(dz)) > self.MAX_JOG_MM:
+            raise ValueError(f"a jog moves at most {self.MAX_JOG_MM:g} mm at a time")
+        x, y, z = self.get_position()
+        target_x, target_y, target_z = x + dx, y + dy, z + dz
+        self._validate_position(target_x, target_y, target_z)
+        if dx or dy:
+            speed = self.XY_SPEED if z >= self.SLOW_Z_THRESHOLD else self.Z_SPEED_SLOW
+            self._send_gcode(f"G1 X{target_x:.2f} Y{target_y:.2f} F{speed}")
+            self._send_gcode("M400")
+        if dz:
+            self._move_z(target_z)
 
 
     # Special Z movement function, includes different speeds:

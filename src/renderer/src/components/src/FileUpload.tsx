@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { cn } from 'cn'
 import { Attachment } from '@/components/ui/attachment'
 import { Button } from '@/components/ui/button'
@@ -158,6 +158,9 @@ export function FileUpload({
     onFilesChange(files.filter((_, i) => i !== index))
   }
 
+  // The folder picker is a second hidden input, opened from the sentence in the dropzone.
+  const folderInput = useRef<HTMLInputElement>(null)
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     if (e.target.files) {
       addFiles(Array.from(e.target.files))
@@ -264,7 +267,18 @@ export function FileUpload({
           </div>
           <div className="space-y-1">
             <p className="text-sm font-medium">
-              <span className="text-primary">Click to upload</span> or drag files or a folder here
+              <span className="text-primary">Click to upload</span>,{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={(event) => {
+                  event.preventDefault()
+                  folderInput.current?.click()
+                }}
+              >
+                choose a folder
+              </button>{' '}
+              or drag files or a folder here
             </p>
             <p className="text-xs text-muted-foreground">
               {reading
@@ -280,19 +294,13 @@ export function FileUpload({
             onChange={handleFileChange}
           />
         </label>
-        <label
-          htmlFor="folder-upload"
-          className="absolute bottom-2 right-3 z-20 cursor-pointer text-xs text-primary hover:underline"
-        >
-          Choose a folder
-          <Input
-            id="folder-upload"
-            type="file"
-            className="hidden"
-            onChange={handleFileChange}
-            {...{ webkitdirectory: '' }}
-          />
-        </label>
+        <Input
+          ref={folderInput}
+          type="file"
+          className="hidden"
+          onChange={handleFileChange}
+          {...{ webkitdirectory: '' }}
+        />
       </Attachment>
       {files.length > 0 && (
         <div className="grid w-full items-center gap-1.5">

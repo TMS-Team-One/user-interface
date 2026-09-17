@@ -4,7 +4,7 @@ import json
 from typing import Literal
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
 from .state import AgentState
@@ -99,6 +99,53 @@ def _tool_message(call: dict, payload: dict) -> ToolMessage:
     )
 
 
+# The model reads images only in human messages, not in tool results, so a
+# tool that took a picture (its result names a picture_path) gets the picture
+# shown to the model in a message that follows the tool result.
+PICTURE_MAX_WIDTH = 800
+PICTURE_JPEG_QUALITY = 80
+
+
+def picture_message(path: str) -> HumanMessage | None:
+    import base64
+
+    import cv2
+
+    image = cv2.imread(path)
+    if image is None:
+        return None
+    if image.shape[1] > PICTURE_MAX_WIDTH:
+        scale = PICTURE_MAX_WIDTH / image.shape[1]
+        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    ok, jpeg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, PICTURE_JPEG_QUALITY])
+    if not ok:
+        return None
+    return HumanMessage(
+        content=[
+            {"type": "text", "text": "The picture the camera just took:"},
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "data:image/jpeg;base64," + base64.b64encode(jpeg.tobytes()).decode("ascii"),
+                    "detail": "low",
+                },
+            },
+        ]
+    )
+
+
+def without_pictures(message: object) -> object:
+    """The message with any image replaced by a note, for the history that is sent again."""
+    if not isinstance(message, HumanMessage) or not isinstance(message.content, list):
+        return message
+    if not any(isinstance(block, dict) and block.get("type") == "image_url" for block in message.content):
+        return message
+    text = " ".join(
+        str(block.get("text", "")) for block in message.content if isinstance(block, dict) and block.get("type") == "text"
+    )
+    return HumanMessage(content=f"{text} (picture no longer attached)".strip())
+
+
 class _AgentNodes:
 
     def __init__(
@@ -156,7 +203,7 @@ class _AgentNodes:
         return "reject_tools" if state.get("guard_error") else "execute_tools"
 
     def execute_tools(self, state: AgentState) -> dict:
-        messages: list[ToolMessage] = []
+        messages: list[ToolMessage | HumanMessage] = []
         # Deliberately synchronous: hardware calls must never run in parallel.
         for call in _latest_tool_calls(state):
             tool = self.registry.get(call["name"])
@@ -172,6 +219,10 @@ class _AgentNodes:
                     "message": str(exc),
                 }
             messages.append(_tool_message(call, payload))
+            if isinstance(result := payload.get("result"), dict) and isinstance(result.get("picture_path"), str):
+                picture = picture_message(result["picture_path"])
+                if picture is not None:
+                    messages.append(picture)
         return {"messages": messages}
 
     def reject_tools(self, state: AgentState) -> dict:

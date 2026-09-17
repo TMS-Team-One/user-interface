@@ -2,20 +2,26 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   BoardPose,
   BoardRender,
+  CameraRegistration,
   ChatEventEnvelope,
   ChatResult,
   ChatSendRequest,
   FileClassification,
   GerberParseResult,
+  JogStep,
   LiveEvent,
   LocalisationResult,
   ManualProbeCoordinates,
-  ManualProbeResult,
   PrinterPosition,
   ProbeConnectionStatus,
+  ProbeResult,
+  PrinterPose,
   Project,
   ProjectFile,
-  ProjectSummary
+  ProjectSummary,
+  SheetTouch,
+  SheetView,
+  VoltageReading
 } from '../shared/types'
 
 export interface ProjectsApi {
@@ -36,6 +42,11 @@ export interface VisionApi {
   ) => Promise<{ result: LocalisationResult; annotated: ArrayBuffer }>
   lastLocalisation: (projectId: number) => Promise<LocalisationResult | null>
   printerPosition: () => Promise<PrinterPosition>
+  registration: () => Promise<CameraRegistration>
+  calibrateCamera: (frames: ArrayBuffer[], bedZs: number[]) => Promise<CameraRegistration>
+  registerSheet: (touches: SheetTouch[]) => Promise<CameraRegistration>
+  detectSheet: (frame: ArrayBuffer) => Promise<SheetView>
+  boardPose: (projectId: number, zContact: number) => Promise<PrinterPose>
   syncPose: (projectId: number, featureId: number, printer: PrinterPosition) => Promise<BoardPose>
 }
 
@@ -44,7 +55,10 @@ export interface ProbeApi {
   status: () => Promise<ProbeConnectionStatus>
   disconnect: () => Promise<ProbeConnectionStatus>
   home: () => Promise<ProbeConnectionStatus>
-  runManualTest: (coordinates: ManualProbeCoordinates) => Promise<ManualProbeResult>
+  measure: () => Promise<VoltageReading>
+  probeAt: (coordinates: ManualProbeCoordinates) => Promise<ProbeResult>
+  move: (coordinates: ManualProbeCoordinates) => Promise<PrinterPosition>
+  jog: (step: JogStep) => Promise<PrinterPosition>
 }
 
 export interface ChatApi {

@@ -112,7 +112,11 @@ export interface LocalisedFeature {
   id: number
   kind: 'hole' | 'pad'
   board_xy: [number, number]
+  /** Diameter in board millimetres. */
+  dia: number
   image_xy: [number, number]
+  /** The circle the detector matched to it, x, y, radius in pixels, if any. */
+  detected_xyr: [number, number, number] | null
   inlier: boolean | null
 }
 
@@ -131,6 +135,7 @@ export interface LocalisationResult {
     inliers: number
     rms_mm: number
     outline_support: number | null
+    outline_consistency?: number | null
     pass: boolean
     /** How many camera frames were localised and how many agree with this pose. */
     frames?: number
@@ -140,8 +145,79 @@ export interface LocalisationResult {
   /** Every circle the detector found: x, y, radius in image pixels. */
   detected: [number, number, number][]
   features: LocalisedFeature[]
+  /** The sheet in this picture, when the camera is calibrated and the fit passed. */
+  sheet_view?: SheetView
+  /** Why there is no printer pose although the fit passed. */
+  sheet_error?: string
+  /** The board's pose on the printer, when the sheet is registered and seen and the fit passed. */
+  pose_on_printer?: PrinterPose
 }
 
+/** What the camera and the sheet make of a localisation; the pose the runner takes. */
+export interface PrinterPose {
+  x: number
+  y: number
+  /** The bed height at which the probe touches the board, once measured on it. */
+  z_contact: number | null
+  rotation_deg: number
+  /** Printer millimetres per board millimetre; 1 when all is well. */
+  scale: number
+  board_height_mm: number
+  /** The height came from the board's apparent size, not from a touch. */
+  height_estimated: boolean
+  /** How well the board's features fit a rigid board on the printer, mm RMS. */
+  residual_mm: number
+  corners_seen: number
+  warnings: string[]
+}
+export interface SheetTouch {
+  target: number
+  printer_xyz: [number, number, number]
+}
+/** The sheet-to-printer mapping from the probe's touches on the sheet's targets. */
+export interface SheetRegistration {
+  version: number
+  registered_at: string
+  sheet_to_printer: number[][]
+  /** The bed height at which the tip touches the paper. */
+  z_sheet: number
+  z_spread: number
+  /** The printout's size against its design; 1 when printed at 100 %. */
+  scale: number
+  mirrored: boolean
+  residual_mm: number
+  touches: SheetTouch[]
+}
+/** The camera's lens, from pictures of the sheet at several bed heights. */
+export interface CameraModel {
+  version: number
+  calibrated_at: string
+  image: { width: number; height: number }
+  camera_matrix: number[][]
+  distortion: number[]
+  focal_px: number
+  rms_px: number
+  step_residual_mm: number
+  pictures: { bed_z: number; corners: number; distance_mm: number }[]
+}
+/** One registration per tester: the camera and the sheet, each until done. */
+export interface CameraRegistration {
+  camera: CameraModel | null
+  sheet: SheetRegistration | null
+}
+/** The sheet as seen in one picture and, with a camera model, the camera's pose against it. */
+export interface SheetView {
+  image: { width: number; height: number }
+  corners: number
+  /** Target number to its pixel position. */
+  targets: Record<string, [number, number]>
+  rvec: number[] | null
+  tvec: number[] | null
+  rms_px: number | null
+  distance_mm: number | null
+  /** The glass plate's outline in pixels. */
+  outline_px: [number, number][] | null
+}
 export interface PrinterPosition {
   x: number
   y: number
@@ -159,7 +235,21 @@ export interface ManualProbeCoordinates {
   z: number
 }
 
-export interface ManualProbeResult {
+/** A relative step for the jog; omitted axes stay where they are. */
+export interface JogStep {
+  dx?: number
+  dy?: number
+  dz?: number
+}
+
+/** One voltage reading where the probe stands. */
+export interface VoltageReading {
+  voltage: number
+  unit: 'V'
+}
+
+/** The probe was put on a position, measured there and retracted. */
+export interface ProbeResult {
   target: ManualProbeCoordinates
   voltage: number
   unit: 'V'
@@ -203,6 +293,10 @@ export interface ChatSendRequest {
   runId: string
   projectId: number
   message: string
+  /** The camera stream the agent's take_picture tool grabs from. */
+  cameraUrl: string
+  /** The board's outline in mm, for finding the board in a picture. */
+  outline: [number, number][]
 }
 
 export interface ChatResult {
