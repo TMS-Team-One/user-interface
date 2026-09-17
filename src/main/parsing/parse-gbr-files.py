@@ -244,7 +244,7 @@ def _aperture_params(aperture, size: Tuple[Optional[float], Optional[float]]) ->
     return ", ".join(parts) if parts else None
 
 
-def _parse_gerber_source(content: str, source: str) -> GerberParseResult:
+def _parse_gerber_source(content: str, source: str, copper_only: bool = True) -> GerberParseResult:
     ast = Tokenizer().tokenize(content)
     parser = Parser2()
     command_buffer = parser.parse(ast)
@@ -269,7 +269,7 @@ def _parse_gerber_source(content: str, source: str) -> GerberParseResult:
         is_copper = file_function.split(",")[0].strip().lower() == "copper"
     else:
         is_copper = source.lower().endswith(COPPER_EXTENSIONS)
-    if not is_copper:
+    if copper_only and not is_copper:
         return GerberParseResult(pads=[], bounds=bounds)
 
     amparams_sizes = _parse_amparams_sizes(content)
@@ -407,6 +407,7 @@ def main(
     gbr_content: Optional[str] = None,
     test_filename: str = "example_board_top_copper_x3.gbr",
     filename: Optional[str] = None,
+    copper_only: bool = True,
 ) -> GerberParseResult:
     """
     Extracts every pad location (plus the file's overall bounding box, for
@@ -418,28 +419,31 @@ def main(
     - gbr_content is a non-empty string: treated as the full text content of
       one .gbr file (production mode). `filename` is the file's original
       name, used as a fallback copper-layer signal when %TF.FileFunction% is
-      absent (see COPPER_EXTENSIONS).
+      absent (see COPPER_EXTENSIONS). With copper_only=False every flash of
+      any layer is reported, e.g. the openings of a solder-mask file.
     """
     if gbr_content:
         source, content = (filename or "gerber"), gbr_content
     else:
         source, content = _find_gbr_file(FILES_DIR, test_filename)
 
-    return _parse_gerber_source(content, source)
+    return _parse_gerber_source(content, source, copper_only)
 
 
 if __name__ == "__main__":
     # Piped invocation (e.g. spawned from the Electron main process): the full
     # .gbr file content is written to stdin, the file's original name is
     # argv[1], and the result ({pads, bounds}) is printed to stdout as JSON
-    # so the caller can JSON.parse() it.
+    # so the caller can JSON.parse() it. "--all-flashes" reports the flashes
+    # of a non-copper layer too.
     if not sys.stdin.isatty():
         import json
         from dataclasses import asdict
 
         gbr_content = sys.stdin.read()
-        filename = sys.argv[1] if len(sys.argv) > 1 else None
-        result = main(gbr_content, filename=filename)
+        args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
+        filename = args[0] if args else None
+        result = main(gbr_content, filename=filename, copper_only="--all-flashes" not in sys.argv)
         print(json.dumps(asdict(result)))
     else:
         # Interactive/local testing: parse the local example file instead.

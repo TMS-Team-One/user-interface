@@ -1,6 +1,7 @@
-import { PlusIcon, RefreshCcw, Trash2Icon, XIcon } from 'lucide-react'
+import { ChevronRight, PlusIcon, RefreshCcw, Trash2Icon, XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Separator } from '@/components/ui/separator'
 import {
   AlertDialog,
@@ -23,53 +24,63 @@ import {
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
-  SidebarMenuItem
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem
 } from '@/components/ui/sidebar'
 import { useModal } from '@/hooks/use-modal'
 import { useConnection } from '@/hooks/use-connection'
-import AddTestCaseModal from './AddTestCaseModal'
+import NewProjectModal from './NewProjectModal'
 import { useEffect, useState } from 'react'
-import type { TestSummary } from '@shared/types'
+import type { FileKind, ProjectSummary } from '@shared/types'
+
+const FILE_KIND_LABELS: Record<FileKind, string> = {
+  gerber: 'Gerber',
+  drill: 'Drill',
+  step: 'STEP',
+  netlist: 'Netlist',
+  unknown: 'Not used'
+}
 
 function AppSidebar({
-  onSelectTestCase,
-  onTestCaseDeleted
+  onSelectProject,
+  onProjectDeleted
 }: {
-  onSelectTestCase: (test: TestSummary) => void
-  onTestCaseDeleted?: (id: number) => void
+  onSelectProject: (project: ProjectSummary) => void
+  onProjectDeleted?: (id: number) => void
 }): React.JSX.Element {
   const { openModal } = useModal()
-  const [testCaseHistory, setTestCaseHistory] = useState<TestSummary[]>([])
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   useEffect(() => {
-    window.api.tests
+    window.api.projects
       .list()
-      .then(setTestCaseHistory)
-      .catch((error) => console.error('Failed to load test cases', error))
+      .then(setProjects)
+      .catch((error) => console.error('Failed to load projects', error))
   }, [])
 
-  const handleTestCaseCreated = (test: TestSummary) => {
-    setTestCaseHistory((prev) => [test, ...prev])
+  const handleProjectCreated = (project: ProjectSummary): void => {
+    setProjects((prev) => [project, ...prev])
   }
 
-  const handleDeleteTestCase = async (id: number) => {
+  const handleDeleteProject = async (id: number): Promise<void> => {
     try {
-      await window.api.tests.delete(id)
-      setTestCaseHistory((prev) => prev.filter((testCase) => testCase.id !== id))
-      onTestCaseDeleted?.(id)
+      await window.api.projects.delete(id)
+      setProjects((prev) => prev.filter((project) => project.id !== id))
+      onProjectDeleted?.(id)
     } catch (error) {
-      console.error('Failed to delete test case', error)
+      console.error('Failed to delete project', error)
     }
   }
 
-  const toggleSelectMode = () => {
+  const toggleSelectMode = (): void => {
     setSelectMode((prev) => !prev)
     setSelectedIds(new Set())
   }
 
-  const toggleSelected = (id: number) => {
+  const toggleSelected = (id: number): void => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -81,18 +92,18 @@ function AppSidebar({
     })
   }
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteSelected = async (): Promise<void> => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
 
     try {
-      await window.api.tests.deleteMany(ids)
-      setTestCaseHistory((prev) => prev.filter((testCase) => !selectedIds.has(testCase.id)))
-      ids.forEach((id) => onTestCaseDeleted?.(id))
+      await window.api.projects.deleteMany(ids)
+      setProjects((prev) => prev.filter((project) => !selectedIds.has(project.id)))
+      ids.forEach((id) => onProjectDeleted?.(id))
       setSelectedIds(new Set())
       setSelectMode(false)
     } catch (error) {
-      console.error('Failed to delete selected test cases', error)
+      console.error('Failed to delete selected projects', error)
     }
   }
 
@@ -107,16 +118,16 @@ function AppSidebar({
             className="w-fit justify-start"
             onClick={() =>
               openModal({
-                title: 'Add new test case',
-                content: <AddTestCaseModal onCreated={handleTestCaseCreated} />
+                title: 'New project',
+                content: <NewProjectModal onCreated={handleProjectCreated} />
               })
             }
           >
             <PlusIcon />
-            Add new test case
+            New project
           </Button>
         </div>
-        {testCaseHistory.length > 0 && (
+        {projects.length > 0 && (
           <div className="w-full flex justify-center">
             <Button className="w-fit justify-start" variant="ghost" onClick={toggleSelectMode}>
               {selectMode ? (
@@ -137,60 +148,87 @@ function AppSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            {testCaseHistory.length === 0 || !testCaseHistory ? (
-              <p className="px-2 py-1.5 text-sm text-sidebar-foreground/70">
-                No test cases done yet.
-              </p>
+            {projects.length === 0 ? (
+              <p className="px-2 py-1.5 text-sm text-sidebar-foreground/70">No projects yet.</p>
             ) : (
               <SidebarMenu>
-                {testCaseHistory.map((testCase) => (
-                  <SidebarMenuItem key={testCase.id} className="flex items-center gap-1">
-                    {selectMode && (
-                      <Checkbox
-                        className="ml-2"
-                        checked={selectedIds.has(testCase.id)}
-                        onCheckedChange={() => toggleSelected(testCase.id)}
-                        aria-label={`Select ${testCase.testName}`}
-                      />
-                    )}
-                    <SidebarMenuButton
-                      onClick={() =>
-                        selectMode
-                          ? toggleSelected(testCase.id)
-                          : onSelectTestCase(testCase)
-                      }
-                    >
-                      {testCase.testName}
-                    </SidebarMenuButton>
-                    {!selectMode && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <SidebarMenuAction
-                            showOnHover
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Delete ${testCase.testName}`}
+                {projects.map((project) => (
+                  <Collapsible key={project.id} asChild>
+                    <SidebarMenuItem>
+                      <div className="flex items-center gap-1">
+                        {selectMode && (
+                          <Checkbox
+                            className="ml-2"
+                            checked={selectedIds.has(project.id)}
+                            onCheckedChange={() => toggleSelected(project.id)}
+                            aria-label={`Select ${project.name}`}
+                          />
+                        )}
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            className="shrink-0 [&[data-state=open]>svg]:rotate-90"
+                            aria-label={`Show files of ${project.name}`}
                           >
-                            <Trash2Icon />
-                          </SidebarMenuAction>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete test case?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete &quot;{testCase.testName}&quot; and its
-                              associated data. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteTestCase(testCase.id)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                  </SidebarMenuItem>
+                            <ChevronRight className="transition-transform" />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <SidebarMenuButton
+                          onClick={() =>
+                            selectMode ? toggleSelected(project.id) : onSelectProject(project)
+                          }
+                        >
+                          {project.name}
+                        </SidebarMenuButton>
+                        {!selectMode && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <SidebarMenuAction
+                                showOnHover
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Delete ${project.name}`}
+                              >
+                                <Trash2Icon />
+                              </SidebarMenuAction>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete project?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently delete &quot;{project.name}&quot; and all
+                                  its files. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteProject(project.id)}>
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {project.files.map((file) => (
+                            <SidebarMenuSubItem
+                              key={file.fileName}
+                              className="flex items-center gap-2 px-2 py-1 text-xs"
+                            >
+                              <span className="min-w-0 flex-1 truncate" title={file.fileName}>
+                                {file.fileName}
+                              </span>
+                              <span className="shrink-0 text-sidebar-foreground/60">
+                                {FILE_KIND_LABELS[file.kind]}
+                              </span>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
                 ))}
               </SidebarMenu>
             )}
@@ -199,9 +237,7 @@ function AppSidebar({
       </SidebarContent>
       {selectMode && (
         <div className="mx-3 mb-2 flex items-center justify-between">
-          <span className="text-sm text-sidebar-foreground/70">
-            {selectedIds.size} selected
-          </span>
+          <span className="text-sm text-sidebar-foreground/70">{selectedIds.size} selected</span>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" disabled={selectedIds.size === 0}>
@@ -211,10 +247,10 @@ function AppSidebar({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete {selectedIds.size} test case(s)?</AlertDialogTitle>
+                <AlertDialogTitle>Delete {selectedIds.size} project(s)?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete the selected test cases and their associated data.
-                  This action cannot be undone.
+                  This will permanently delete the selected projects and all their files. This
+                  action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

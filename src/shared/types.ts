@@ -1,12 +1,39 @@
-export interface Test {
-  id: number
-  testName: string
-  createdAt: string
-  fileName: string
-  gerberFileContent: string
+export type LayerType = 'copper' | 'soldermask' | 'silkscreen' | 'solderpaste' | 'drill' | 'outline'
+export type LayerSide = 'top' | 'bottom' | 'inner' | 'all'
+
+/** Which board layer a Gerber or drill file describes. A null type keeps the file but leaves it out of the render. */
+export interface LayerAssignment {
+  layerType: LayerType | null
+  layerSide: LayerSide | null
 }
 
-export type TestSummary = Omit<Test, 'gerberFileContent'>
+/** What a project file is: a Gerber layer, an Excellon drill file, a STEP model, a netlist, or not recognised. */
+export type FileKind = 'gerber' | 'drill' | 'step' | 'netlist' | 'unknown'
+
+export interface FileClassification extends LayerAssignment {
+  kind: FileKind
+}
+
+export interface ProjectFile extends FileClassification {
+  fileName: string
+  content: string
+}
+
+export interface ProjectFileSummary {
+  fileName: string
+  kind: FileKind
+}
+
+export interface ProjectSummary {
+  id: number
+  name: string
+  createdAt: string
+  files: ProjectFileSummary[]
+}
+
+export interface Project extends ProjectSummary {
+  files: ProjectFile[]
+}
 
 export interface ParsedPad {
   x: number
@@ -20,19 +47,107 @@ export interface ParsedPad {
   net_name: string | null
   x_size: number | null
   y_size: number | null
-}
-
-export interface BoardBounds {
-  min_x: number
-  min_y: number
-  max_x: number
-  max_y: number
-  x_size: number
-  y_size: number
-  unit: string
+  side: 'top' | 'bottom'
+  /** Whether the probe can be put on this pad; see main/testing/testable-pads.ts. */
+  testable: boolean
+  untestableReason: string | null
 }
 
 export interface GerberParseResult {
   pads: ParsedPad[]
-  bounds: BoardBounds | null
+}
+
+/** Top and bottom views of a board as SVG markup, plus its size in the Gerber files' units. */
+export interface BoardRender {
+  topSvg: string
+  bottomSvg: string
+  units: 'mm' | 'in'
+  width: number
+  height: number
+}
+
+/** A pad the probe is sent to during a test run, in millimetres of the board's Gerber frame. */
+export interface RunTarget {
+  index: number
+  x: number
+  y: number
+  label: string
+}
+
+/**
+ * What the probe-pilot runner reports during a test run. Positions are in the
+ * board's Gerber frame in millimetres; z is the probe tip's height above the
+ * board's top face. A move names its destination and how long the head took.
+ */
+export type LiveEvent =
+  | {
+      type: 'started'
+      targets: number
+      backend: 'ultimaker' | 'simulated'
+      instrument: 'ads1115' | 'simulated'
+    }
+  | { type: 'move'; x: number; y: number; z: number; duration_ms: number }
+  | { type: 'target'; target: RunTarget }
+  | { type: 'contact'; target: RunTarget; voltage: number }
+  | { type: 'log'; message: string }
+  | { type: 'error'; message: string }
+  | { type: 'finished' }
+
+/** Where the board lies on the printer bed, as the probe-pilot runner takes it. */
+export interface BoardPose {
+  x: number
+  y: number
+  z_contact: number
+  rotation_deg: number
+  synced_on?: { board_xy: [number, number]; printer_xyz: [number, number, number] }
+}
+
+/** A CAD feature the localisation looked for: a mounting hole or a round pad. */
+export interface LocalisedFeature {
+  id: number
+  kind: 'hole' | 'pad'
+  board_xy: [number, number]
+  image_xy: [number, number]
+  inlier: boolean | null
+}
+
+/**
+ * What scripts/locate_pcb.py in probe-pilot reports for one image. When the
+ * board was not found, `error` says why, `fit` is null and only `detected`,
+ * the circles the detector saw, is filled.
+ */
+export interface LocalisationResult {
+  source: string
+  image: { width: number; height: number }
+  error: string | null
+  fit: {
+    detected: number
+    matched: number
+    inliers: number
+    rms_mm: number
+    outline_support: number | null
+    pass: boolean
+  } | null
+  board_to_image: number[][] | null
+  /** Every circle the detector found: x, y, radius in image pixels. */
+  detected: [number, number, number][]
+  features: LocalisedFeature[]
+}
+
+export interface PrinterPosition {
+  x: number
+  y: number
+  z: number
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatReply {
+  text: string
+  tools: string[]
+  /** Why there is no answer, e.g. a missing API key. */
+  error: string | null
 }
